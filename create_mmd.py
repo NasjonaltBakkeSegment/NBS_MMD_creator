@@ -39,7 +39,7 @@ def get_metadata_from_opensearch(filename):
         data = response.json()
         #print(f"API Response: {data}")  # Debug statement to inspect API response
         if 'features' in data and data['features']:
-            return data['features'][0]['properties']
+            return data['features'][0]['properties'], data['features'][0]['id']
         else:
             # Try a broader search if exact match fails
             print("No exact match found, trying broader search...")
@@ -53,7 +53,7 @@ def get_metadata_from_opensearch(filename):
                     data = response.json()
                     print(f"Broader API Response: {data}")  # Debug statement for broader search response
                     if 'features' in data and data['features']:
-                        return data['features'][0]['properties']
+                        return data['features'][0]['properties'], data['features'][0]['id']
             raise ValueError('No metadata found for the given filename.')
     else:
         print(f"API Request failed with status code {response.status_code}")  # Debug statement for failed request
@@ -86,18 +86,18 @@ def infer_orbit_direction(metadata):
 
     return 'UNKNOWN'
 
-def create_xml(metadata, global_data):
+def create_xml(metadata, id, global_data):
     ET.register_namespace('mmd', 'http://www.met.no/schema/mmd')
     ET.register_namespace('gml', 'http://www.opengis.net/gml')
 
     root = ET.Element(prepend_mmd('mmd'))
 
     metadata_identifier = ET.SubElement(root, prepend_mmd('metadata_identifier'))
-    metadata_identifier.text = 'Pending url for metadata identifier'
+    metadata_identifier.text = id
 
     title = ET.SubElement(root, prepend_mmd('title'))
     title.attrib[prepend_xml('lang')] = 'en'
-    title.text = metadata['title']
+    title.text = metadata['title'].split('.')[0]
 
     abstract = ET.SubElement(root, prepend_mmd('abstract'))
     abstract.attrib[prepend_xml('lang')] = 'en'
@@ -392,7 +392,7 @@ def save_xml_to_file(xml_element, output_path):
 
 def main(filename, yaml_path, output_path, overwrite):
     try:
-        metadata = get_metadata_from_opensearch(filename)
+        metadata, id = get_metadata_from_opensearch(filename)
         global_attributes = load_global_attributes(yaml_path)
 
         if os.path.exists(output_path):
@@ -406,7 +406,7 @@ def main(filename, yaml_path, output_path, overwrite):
             except ET.ParseError:
                 print(f"Couldn't parse existing file: {output_path}")
 
-        mmd_xml = create_xml(metadata, global_attributes)
+        mmd_xml = create_xml(metadata, id, global_attributes)
         save_xml_to_file(mmd_xml, output_path)
         print(f'Metadata XML file saved to {output_path}')
     except requests.exceptions.RequestException as e:
