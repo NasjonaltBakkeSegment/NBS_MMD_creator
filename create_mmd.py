@@ -6,7 +6,7 @@ import os
 import argparse
 import hashlib
 from datetime import datetime
-from shapely.geometry import Polygon, box, LinearRing
+from shapely.geometry import Polygon, LinearRing
 
 def within_sios(coord_strings):
     # Parse the SIOS polygon
@@ -419,11 +419,6 @@ def create_xml(metadata, id, global_data):
     use_constraint = ET.SubElement(root, prepend_mmd('use_constraint'))
     license_text = ET.SubElement(use_constraint, prepend_mmd('license_text'))
     license_text.text = global_data['global']['license_text']
-
-    # TODO: Add parent ID
-    related_dataset = ET.SubElement(root, prepend_mmd('related_dataset'))
-    related_dataset.attrib['relation_type'] = 'parent'
-    related_dataset.text = 'Pending parent_id'
 
     return root
 
