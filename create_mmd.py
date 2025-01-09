@@ -92,6 +92,9 @@ def prepend_gml(tag: str) -> str:
 def prepend_xml(tag: str) -> str:
         return f'{{http://www.w3.org/XML/1998/namespace}}{tag}'
 
+def create_root_with_namespaces(tag: str, namespaces: dict) -> ET.Element:
+    nsmap = {f'xmlns:{prefix}': uri for prefix, uri in namespaces.items()}
+    return ET.Element(f'{{{namespaces["mmd"]}}}{tag}', nsmap)
 def infer_orbit_direction(metadata):
     start_time = metadata['startDate']
     if start_time:
@@ -107,10 +110,16 @@ def infer_orbit_direction(metadata):
     return 'UNKNOWN'
 
 def create_xml(metadata, id, global_data):
-    ET.register_namespace('mmd', 'http://www.met.no/schema/mmd')
-    ET.register_namespace('gml', 'http://www.opengis.net/gml')
 
-    root = ET.Element(prepend_mmd('mmd'))
+    namespaces = {
+        'mmd': 'http://www.met.no/schema/mmd',
+        'gml': 'http://www.opengis.net/gml'
+    }
+
+    for prefix, uri in namespaces.items():
+        ET.register_namespace(prefix, uri)
+
+    root = ET.Element(f'{{{namespaces["mmd"]}}}mmd', nsmap=namespaces)
 
     metadata_identifier = ET.SubElement(root, prepend_mmd('metadata_identifier'))
     metadata_identifier.text = id
@@ -411,6 +420,7 @@ def create_xml(metadata, id, global_data):
     license_text = ET.SubElement(use_constraint, prepend_mmd('license_text'))
     license_text.text = global_data['global']['license_text']
 
+    # TODO: Add parent ID
     related_dataset = ET.SubElement(root, prepend_mmd('related_dataset'))
     related_dataset.attrib['relation_type'] = 'parent'
     related_dataset.text = 'Pending parent_id'
