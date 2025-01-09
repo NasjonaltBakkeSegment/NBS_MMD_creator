@@ -6,6 +6,26 @@ import os
 import argparse
 import hashlib
 from datetime import datetime
+from shapely.geometry import Polygon, box, LinearRing
+
+def within_sios(coord_strings):
+    # Parse the SIOS polygon
+    sios_polygon = Polygon([
+        (-20, 70),
+        (-20, 90),
+        (40, 90),
+        (40, 70),
+        (-20, 70)
+    ])
+
+    linear_ring_coords = [tuple(map(float, coord.split())) for coord in coord_strings]
+
+    # Create a Shapely LinearRing from the coordinates
+    linear_ring = LinearRing(linear_ring_coords)
+
+    # Check if the LinearRing intersects the SIOS polygon
+    in_polygon = linear_ring.intersects(sios_polygon)
+    return in_polygon
 
 def get_collection_from_filename(filename):
     if filename.startswith('S1'):
@@ -39,7 +59,7 @@ def get_metadata_from_opensearch(filename):
         data = response.json()
         #print(f"API Response: {data}")  # Debug statement to inspect API response
         if 'features' in data and data['features']:
-            return data['features'][0]['properties'], data['features'][0]['id']
+            return data['features'][0]['properties'], data['properties']['id']
         else:
             # Try a broader search if exact match fails
             print("No exact match found, trying broader search...")
@@ -53,7 +73,7 @@ def get_metadata_from_opensearch(filename):
                     data = response.json()
                     print(f"Broader API Response: {data}")  # Debug statement for broader search response
                     if 'features' in data and data['features']:
-                        return data['features'][0]['properties'], data['features'][0]['id']
+                        return data['features'][0]['properties'], data['properties']['id']
             raise ValueError('No metadata found for the given filename.')
     else:
         print(f"API Request failed with status code {response.status_code}")  # Debug statement for failed request
@@ -112,6 +132,19 @@ def create_xml(metadata, id, global_data):
     collection = ET.SubElement(root, prepend_mmd('collection'))
     collection.text = 'NBS'
 
+    if metadata['gmlgeometry'] is not None:
+        ttt = metadata['gmlgeometry'].lstrip('<gml:Polygon srsName="EPSG:4326"><gml:outerBoundaryIs><gml:LinearRing><gml:coordinates>')
+        ttt = ttt.rstrip('</gml:coordinates></gml:LinearRing></gml:outerBoundaryIs></gml:Polygon>')
+        ttt = ttt.split(' ')
+        for i,elem in enumerate(ttt):
+            ttt[i] = elem.replace(',',' ')
+
+        if within_sios(ttt):
+            collection = ET.SubElement(root, prepend_mmd('collection'))
+            collection.text = 'SIOS'
+        else:
+            pass
+
     last_metadata_update = ET.SubElement(root, prepend_mmd('last_metadata_update'))
     update = ET.SubElement(last_metadata_update, prepend_mmd('update'))
     creation_timestamp = ET.SubElement(update, prepend_mmd('datetime'))
@@ -136,7 +169,6 @@ def create_xml(metadata, id, global_data):
     for topic in iso_topics:
         iso_topic_category = ET.SubElement(root, prepend_mmd('iso_topic_category'))
         iso_topic_category.text = topic.strip()
-
 
     # Retrieve the keywords for the specific platform
     if metadata['platform'] in ['S1A', 'S1B']:
