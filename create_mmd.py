@@ -59,7 +59,7 @@ def get_metadata_from_opensearch(filename):
         data = response.json()
         #print(f"API Response: {data}")  # Debug statement to inspect API response
         if 'features' in data and data['features']:
-            return data['features'][0]['properties'], data['properties']['id']
+            return data['features'][0]['properties'], data['features'][0]['id']
         else:
             # Try a broader search if exact match fails
             print("No exact match found, trying broader search...")
@@ -73,7 +73,7 @@ def get_metadata_from_opensearch(filename):
                     data = response.json()
                     print(f"Broader API Response: {data}")  # Debug statement for broader search response
                     if 'features' in data and data['features']:
-                        return data['features'][0]['properties'], data['properties']['id']
+                        return data['features'][0]['properties'], data['features'][0]['id']
             raise ValueError('No metadata found for the given filename.')
     else:
         print(f"API Request failed with status code {response.status_code}")  # Debug statement for failed request
