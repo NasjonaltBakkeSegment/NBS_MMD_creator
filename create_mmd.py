@@ -420,6 +420,13 @@ def create_xml(metadata, id, global_data):
     license_text = ET.SubElement(use_constraint, prepend_mmd('license_text'))
     license_text.text = global_data['global']['license_text']
 
+    data_access = ET.SubElement(root,prepend_mmd('data_access'))
+    da_type = ET.SubElement(data_access, prepend_mmd('type'))
+    da_type.text = 'ODATA'
+    da_description = ET.SubElement(data_access,prepend_mmd('description'))
+    da_description.text = 'Open Data Protocol.'
+    da_resource = ET.SubElement(data_access,prepend_mmd('resource'))
+    da_resource.text = f"https://colhub-archive.met.no/odata/v1/Products('{id}')/$value"
     return root
 
 def save_xml_to_file(xml_element, output_path):
