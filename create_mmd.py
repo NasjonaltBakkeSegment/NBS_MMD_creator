@@ -291,6 +291,7 @@ def create_xml(metadata, id, global_data):
     file_size.text = f'{file_size_conv:.2f}'
 
     # Compute checksum for a specific file inside the .SAFE directory
+    # TODO: Currently returning file not found error
     checksum = ET.SubElement(storage_information, prepend_mmd('checksum'))
     checksum.attrib['type'] = 'md5sum'
 
@@ -319,8 +320,9 @@ def create_xml(metadata, id, global_data):
 
     platform = ET.SubElement(root, prepend_mmd('platform'))
     short_name = ET.SubElement(platform, prepend_mmd('short_name'))
-    short_name.text = metadata['platform']
     long_name = ET.SubElement(platform, prepend_mmd('long_name'))
+    metadata['platform'] = metadata['platform'].replace('S','Sentinel-')
+    short_name.text = metadata['platform']
     long_name.text = metadata['platform']
     orbit_relative = ET.SubElement(platform, prepend_mmd('orbit_relative'))
     orbit_relative.text = str(metadata['relativeOrbitNumber'] )
@@ -336,29 +338,29 @@ def create_xml(metadata, id, global_data):
     s_name = ET.SubElement(instrument, prepend_mmd('short_name'))
     s_name.text = metadata['instrument']
     l_name = ET.SubElement(instrument, prepend_mmd('long_name'))
-    if metadata['platform'] in ['S1A', 'S1B']:
+    if metadata['platform'] in ['Sentinel-1A', 'Sentinel-1B']:
         l_name.text = 'Synthetic Aperture Radar (C-band)'
-    elif metadata['platform'] in ['S2A', 'S2B']:
+    elif metadata['platform'] in ['Sentinel-2A', 'Sentinel-2B']:
         l_name.text = 'Multi-Spectral Imager for Sentinel-2'
-    elif metadata['platform'] in ['S3A', 'S3B']:
+    elif metadata['platform'] in ['Sentinel-3A', 'Sentinel-3B']:
         l_name.text = 'Sea and Land Surface Temperature Radiometer'
-    elif metadata['platform'] in ['S5P']:
+    elif metadata['platform'] in ['Sentinel-5P']:
         l_name.text = 'Tropospheric Monitoring Instrument'
     else:
         l_name.text = 'Unknown Platform'
 
     instrument_resource = ET.SubElement(instrument, prepend_mmd('resource'))
-    if metadata['platform'] in ['S1A','S1B']:
+    if metadata['platform'] in ['Sentinel-1A','Sentinel-1B']:
         instrument_resource.text = global_data['S1A']['instrument_vocabulary']
-    elif metadata['platform'] == 'S2A':
+    elif metadata['platform'] == 'Sentinel-2A':
         instrument_resource.text = global_data['S2A']['instrument_vocabulary']
-    elif metadata['platform'] == 'S2B':
+    elif metadata['platform'] == 'Sentinel-2B':
         instrument_resource.text = global_data['S2B']['instrument_vocabulary']
-    elif metadata['platform'] == 'S3A':
+    elif metadata['platform'] == 'Sentinel-3A':
         instrument_resource.text = 'https://space.oscar.wmo.int/satellites/view/sentinel_3a'
-    elif metadata['platform'] == 'S3B':
+    elif metadata['platform'] == 'Sentinel-3B':
         instrument_resource.text = 'https://space.oscar.wmo.int/satellites/view/sentinel_3b'
-    elif metadata['platform'] == 'S5P':
+    elif metadata['platform'] == 'Sentinel-5P':
         instrument_resource.text = 'https://space.oscar.wmo.int/satellites/view/sentinel_5p'
     else:
         instrument_resource.text = 'Unknown instrument_resource'
@@ -395,19 +397,19 @@ def create_xml(metadata, id, global_data):
 
     related_res = ET.SubElement(related_information, prepend_mmd('resource'))
 
-    if metadata['platform'] in ['S1A', 'S1B']:
+    if metadata['platform'] in ['Sentinel-1A', 'Sentinel-1B']:
         related_type.text = global_data['S1']['related_information_type']
         related_desc.text = global_data['S1']['related_information_description']
         related_res.text = global_data['S1']['related_information_resource']
-    elif metadata['platform'] in ['S2A', 'S2B']:
+    elif metadata['platform'] in ['Sentinel-2A', 'Sentinel-2B']:
         related_type.text = global_data['S2']['related_information_type']
         related_desc.text = global_data['S2']['related_information_description']
         related_res.text = global_data['S2']['related_information_resource']
-    elif metadata['platform'] in ['S3A', 'S3B']:
+    elif metadata['platform'] in ['Sentinel-3A', 'Sentinel-3B']:
         related_type.text = global_data['S2']['related_information_type']
         related_desc.text = global_data['S2']['related_information_description']
         related_res.text = 'https://sentiwiki.copernicus.eu/web/s3-mission'
-    elif metadata['platform'] == 'S5P':
+    elif metadata['platform'] == 'Sentinel-5P':
         related_type.text = global_data['S2']['related_information_type']
         related_desc.text = global_data['S2']['related_information_description']
         related_res.text = 'https://sentiwiki.copernicus.eu/web/s5p-mission'
