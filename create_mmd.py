@@ -96,6 +96,8 @@ def create_root_with_namespaces(tag: str, namespaces: dict) -> ET.Element:
     nsmap = {f'xmlns:{prefix}': uri for prefix, uri in namespaces.items()}
     return ET.Element(f'{{{namespaces["mmd"]}}}{tag}', nsmap)
 def infer_orbit_direction(metadata):
+    # TODO: Check this
+    # ! Returning different direction to what we currently have for S2A_MSIL2A_20250101T104441_N0511_R008_T32VMK_20250101T132652
     start_time = metadata['startDate']
     if start_time:
         # Convert string to datetime object
