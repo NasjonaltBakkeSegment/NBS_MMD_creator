@@ -7,6 +7,8 @@ import argparse
 import hashlib
 from datetime import datetime
 from shapely.geometry import Polygon, LinearRing
+import zipfile
+import re
 
 def within_sios(coord_strings):
     # Parse the SIOS polygon
@@ -18,19 +20,43 @@ def within_sios(coord_strings):
         (-20, 70)
     ])
 
-    linear_ring_coords = [tuple(map(float, coord.split())) for coord in coord_strings]
+    # Try to convert directly, and fall back to regex extraction if needed
+    try:
+        # Attempt to parse coordinates directly from coord_strings
+        linear_ring_coords = [tuple(map(float, coord.split())) for coord in coord_strings]
 
-    # Create a Shapely LinearRing from the coordinates
-    linear_ring = LinearRing(linear_ring_coords)
+        # Create a Shapely LinearRing from the coordinates
+        linear_ring = LinearRing(linear_ring_coords)
 
-    # Check if the LinearRing intersects the SIOS polygon
-    in_polygon = linear_ring.intersects(sios_polygon)
-    return in_polygon
+        # Check if the LinearRing intersects the SIOS polygon
+        return linear_ring.intersects(sios_polygon)
+
+    except ValueError:
+        # If a ValueError occurs (e.g., invalid format like XML/GML), fallback to regex method
+        linear_ring_coords = []
+
+        # Regular expression to match coordinates (e.g., -8.766348 57.313187)
+        coord_pattern = re.compile(r"(-?\d+\.\d+) (-?\d+\.\d+)")
+
+        # Loop through each coordinate string
+        for coord_string in coord_strings:
+            # Find all coordinate pairs in the string using regex
+            matches = coord_pattern.findall(coord_string)
+
+            # Convert matched coordinates to tuples of floats and add to the list
+            for match in matches:
+                linear_ring_coords.append((float(match[0]), float(match[1])))
+
+        # Create a Shapely LinearRing from the coordinates
+        linear_ring = LinearRing(linear_ring_coords)
+
+        # Check if the LinearRing intersects the SIOS polygon
+        return linear_ring.intersects(sios_polygon)
 
 def get_collection_from_filename(filename):
     if filename.startswith('S1'):
         return 'Sentinel1'
-    elif filename.startswith('S2A') or filename.startswith('S2B'):
+    elif filename.startswith('S2'):
         return 'Sentinel2'
     elif filename.startswith('S3'):
         return 'Sentinel3'
@@ -38,8 +64,6 @@ def get_collection_from_filename(filename):
         return 'Sentinel5P'
     elif filename.startswith('S6'):
         return 'Sentinel6'
-    elif filename.startswith('S1A') or filename.startswith('S1B'):
-        return 'Sentinel1RTC'
     else:
         raise ValueError('Unknown filename prefix; unable to determine collection')
 
@@ -95,29 +119,95 @@ def prepend_xml(tag: str) -> str:
 def create_root_with_namespaces(tag: str, namespaces: dict) -> ET.Element:
     nsmap = {f'xmlns:{prefix}': uri for prefix, uri in namespaces.items()}
     return ET.Element(f'{{{namespaces["mmd"]}}}{tag}', nsmap)
-def infer_orbit_direction(metadata):
-    # TODO: Check this
-    # ! Returning different direction to what we currently have for S2A_MSIL2A_20250101T104441_N0511_R008_T32VMK_20250101T132652
-    start_time = metadata['startDate']
-    if start_time:
-        # Convert string to datetime object
-        start_time = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
 
-        # Assuming Sentinel-2 descending passes over equator around 10:30 AM local time
-        if start_time.hour < 10 or (start_time.hour == 10 and start_time.minute < 30):
-            return 'DESCENDING'
+def orbit_direction_from_data(filepath=None):
+    '''
+    Try to extract the orbit direction from the data file
+    '''
+    if filepath:
+        filename = os.path.basename(filepath)
+        if filename.endswith(".zip"):
+
+            # File to extract from within the ZIP archive
+            if filename.startswith('S1') or filename.startswith('S2'):
+                source_file = filename.split('.')[0]+'.SAFE'
+                xml_file = source_file + "/manifest.safe"
+            elif filename.startswith('S3'):
+                source_file = filename.split('.')[0]+'.SEN3'
+                xml_file = 'xfdumanifest.xml'
+
+            # Open the ZIP file and read the manifest.safe file
+            with zipfile.ZipFile(filepath, 'r') as z:
+                if xml_file in z.namelist():
+                    with z.open(xml_file) as f:
+                        tree = ET.parse(f)
+                        root = tree.getroot()
+
+                        # Extract namespaces
+                        namespaces = root.nsmap
+
+                        if filename.startswith('S1'):
+                            pass_element = root.findall(".//s1:pass", namespaces=namespaces)
+                            direction = pass_element[0].text
+                            return direction.upper()
+                        elif filename.startswith('S2') or filename.startswith('S3'):
+                            if filename.startswith('S2'):
+                                orbit_number_element = root.xpath("//safe:orbitNumber", namespaces=namespaces)
+                            elif filename.startswith('S3'):
+                                orbit_number_element = root.xpath("//sentinel-safe:orbitNumber", namespaces=namespaces)
+                            if orbit_number_element:
+                                direction = orbit_number_element[0].get('groundTrackDirection')
+                                return direction.upper()
+                            else:
+                                return 'UNKNOWN'
+                        else:
+                            return 'UNKNOWN'
+                else:
+                    return 'UNKNOWN'
+        elif filename.startswith('S5'):
+            return None
         else:
-            return 'ASCENDING'
+            return 'UNKNOWN'
+    else:
+        return 'UNKNOWN'
 
-    return 'UNKNOWN'
+def extract_coordinates(xml_string):
+    match = re.search(r"<gml:coordinates>(.*?)</gml:coordinates>", xml_string)
+    if match:
+        return match.group(1).strip()
+    return ""
 
-def create_xml(metadata, id, global_data):
+def get_zip_checksum(zip_filepath):
+    md5_check = hashlib.md5()
+    try:
+        with open(zip_filepath, 'rb') as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                md5_check.update(chunk)
+        return md5_check.hexdigest()
+    except FileNotFoundError:
+        return 'File not found'
+    except Exception as e:
+        return str(e)
 
+def get_netcdf_checksum(netcdf_filepath):
+    md5_check = hashlib.md5()
+    try:
+        with open(netcdf_filepath, 'rb') as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                md5_check.update(chunk)
+        return md5_check.hexdigest()
+    except FileNotFoundError:
+        return 'File not found'
+    except Exception as e:
+        return str(e)
+
+def create_xml(metadata, id, global_data, filename, filepath=None):
+
+    # TODO: The SAFE filepath will later be predictable so use this predictable filepath instead of passing an argument
     namespaces = {
         'mmd': 'http://www.met.no/schema/mmd',
         'gml': 'http://www.opengis.net/gml'
     }
-
     for prefix, uri in namespaces.items():
         ET.register_namespace(prefix, uri)
 
@@ -144,8 +234,7 @@ def create_xml(metadata, id, global_data):
     collection.text = 'NBS'
 
     if metadata['gmlgeometry'] is not None:
-        ttt = metadata['gmlgeometry'].lstrip('<gml:Polygon srsName="EPSG:4326"><gml:outerBoundaryIs><gml:LinearRing><gml:coordinates>')
-        ttt = ttt.rstrip('</gml:coordinates></gml:LinearRing></gml:outerBoundaryIs></gml:Polygon>')
+        ttt = extract_coordinates(metadata['gmlgeometry'])
         ttt = ttt.split(' ')
         for i,elem in enumerate(ttt):
             ttt[i] = elem.replace(',',' ')
@@ -170,24 +259,40 @@ def create_xml(metadata, id, global_data):
     end_date = ET.SubElement(temporal_extent, prepend_mmd('end_date'))
     end_date.text = metadata['completionDate']
 
-    if metadata['platform'] in ['S1A', 'S1B']:
-        iso_topics = global_data['S1']['iso_topic_category'].split(',')
-    elif metadata['platform'] in ['S2A', 'S2B']:
-        iso_topics = global_data['S2']['iso_topic_category'].split(',')
+    # TODO: Add keywords and iso topics for S6
+    if metadata['platform'].startswith('S1'):
+        satellites = ['A', 'B', 'C', 'D']
+        for sat in satellites:
+            if filename.startswith(f'S1{sat}'):
+                iso_topics = global_data[f'S1{sat}']['iso_topic_category'].split(',')
+                keywords = global_data[f'S1{sat}']['keywords'].split(',')
+                break
+    elif metadata['platform'].startswith('S2'):
+        satellites = ['A', 'B', 'C', 'D']
+        for sat in satellites:
+            if filename.startswith(f'S2{sat}'):
+                iso_topics = global_data[f'S2{sat}']['iso_topic_category'].split(',')
+                keywords = global_data[f'S2{sat}']['keywords'].split(',')
+                break
+    elif metadata['platform'].startswith('S3'):
+        products = ['OL', 'SL', 'SY', 'SR']
+        satellites = ['A', 'B', 'C', 'D']
+        for sat in satellites:
+            for product in products:
+                if filename.startswith(f'S3{sat}_{product}'):
+                    iso_topics = global_data[f'S3_{product}']['iso_topic_category'].split(',')
+                    keywords = global_data[f'S3_{product}']['keywords'].split(',')
+                    break
+    elif metadata['platform'].startswith('S5'):
+        iso_topics = global_data['S5P']['iso_topic_category'].split(',')
+        keywords = global_data['S5P']['keywords'].split(',')
     else:
         iso_topics = []
+        keywords = []
 
     for topic in iso_topics:
         iso_topic_category = ET.SubElement(root, prepend_mmd('iso_topic_category'))
         iso_topic_category.text = topic.strip()
-
-    # Retrieve the keywords for the specific platform
-    if metadata['platform'] in ['S1A', 'S1B']:
-        keywords = global_data['S1']['keywords'].split(',')
-    elif metadata['platform'] in ['S2A', 'S2B']:
-        keywords = global_data['S2']['keywords'].split(',')
-    else:
-        keywords = []
 
     # Separate and process the keywords
     gcmdsk_keywords = []
@@ -221,16 +326,8 @@ def create_xml(metadata, id, global_data):
 
         gemet_resource = ET.SubElement(gemet_elem, prepend_mmd('resource'))
         gemet_resource.text = 'http://inspire.ec.europa.eu/theme'
-        gemet_sep = ET.SubElement(gemet_elem, prepend_mmd('separator'))
-
 
     if metadata['gmlgeometry'] is not None:
-        ttt = metadata['gmlgeometry'].lstrip('<gml:Polygon srsName="EPSG:4326"><gml:outerBoundaryIs><gml:LinearRing><gml:coordinates>')
-        ttt = ttt.rstrip('</gml:coordinates></gml:LinearRing></gml:outerBoundaryIs></gml:Polygon>')
-        ttt = ttt.split(' ')
-        for i,elem in enumerate(ttt):
-            ttt[i] = elem.replace(',',' ')
-
         geographic_extent = ET.SubElement(root, prepend_mmd('geographic_extent'))
         polygon = ET.SubElement(geographic_extent, prepend_mmd('polygon'))
         sub_poly = ET.SubElement(polygon, prepend_gml('Polygon'))
@@ -283,36 +380,36 @@ def create_xml(metadata, id, global_data):
     data_center_url.text = global_data['global']['creator_url']
 
     storage_information = ET.SubElement(root, prepend_mmd('storage_information'))
+    file_extension = os.path.splitext(filepath)[1].lower()  # Get the file extension (e.g., '.zip' or '.nc')
     file_name = ET.SubElement(storage_information, prepend_mmd('file_name'))
     file_name.text = metadata['title']
     file_format = ET.SubElement(storage_information, prepend_mmd('file_format'))
-    file_format.text = 'SAFE'
+    if file_extension in ['.zip','SAFE']:
+        file_format.text = 'SAFE'
+    elif file_extension == '.nc':
+        file_format.text = 'NetCDF'
     file_size = ET.SubElement(storage_information, prepend_mmd('file_size'))
     file_size.attrib['unit'] = 'MB'
     file_size_conv = metadata['services']['download']['size'] / 1048576
     file_size.text = f'{file_size_conv:.2f}'
 
-    # Compute checksum for a specific file inside the .SAFE directory
-    # TODO: Currently returning file not found error
+    # Compute checksum for file
     checksum = ET.SubElement(storage_information, prepend_mmd('checksum'))
     checksum.attrib['type'] = 'md5sum'
 
-    safe_dir_path = metadata['title']
-    specific_file_name = 'manifest.safe'
-    file_path = os.path.join(safe_dir_path, specific_file_name)
+    if filepath:
+        try:
 
-    md5_check = hashlib.md5()
-    try:
-        with open(file_path, 'rb') as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                md5_check.update(chunk)
-        checksum.text = md5_check.hexdigest()
-    except FileNotFoundError:
+            if file_extension == '.zip':
+                checksum.text = get_zip_checksum(filepath)
+            elif file_extension == '.nc':
+                checksum.text = get_netcdf_checksum(filepath)
+            else:
+                checksum.text = 'Unsupported file type'
+        except Exception as e:
+            checksum.text = str(e)
+    else:
         checksum.text = 'File not found'
-    except IsADirectoryError:
-        checksum.text = 'Expected a file but found a directory'
-    except Exception as e:
-        checksum.text = str(e)
 
     project = ET.SubElement(root, prepend_mmd('project'))
     project_s_name = ET.SubElement(project, prepend_mmd('short_name'))
@@ -321,51 +418,31 @@ def create_xml(metadata, id, global_data):
     project_l_name.text = global_data['global']['project']
 
     platform = ET.SubElement(root, prepend_mmd('platform'))
-    short_name = ET.SubElement(platform, prepend_mmd('short_name'))
-    long_name = ET.SubElement(platform, prepend_mmd('long_name'))
-    metadata['platform'] = metadata['platform'].replace('S','Sentinel-')
-    short_name.text = metadata['platform']
-    long_name.text = metadata['platform']
+    platform_short_name = ET.SubElement(platform, prepend_mmd('short_name'))
+    platform_long_name = ET.SubElement(platform, prepend_mmd('long_name'))
+    platform_short_name.text = metadata['platform'].replace('S','Sentinel-')
+    platform_long_name.text = metadata['platform'].replace('S','Sentinel-')
     orbit_relative = ET.SubElement(platform, prepend_mmd('orbit_relative'))
     orbit_relative.text = str(metadata['relativeOrbitNumber'] )
     orbit_absolute = ET.SubElement(platform, prepend_mmd('orbit_absolute'))
     orbit_absolute.text = str(metadata['orbitNumber'])
-    orbit_direction = ET.SubElement(platform, prepend_mmd('orbit_direction'))
     if metadata['orbitDirection'] is None:
-        orbit_direction.text = infer_orbit_direction(metadata)
+        direction = orbit_direction_from_data(filepath)
+        if direction:
+            orbit_direction = ET.SubElement(platform, prepend_mmd('orbit_direction'))
+            orbit_direction.text = direction
+        else:
+            # Can't currently find the orbit direction for S5 products
+            pass
     else:
+        orbit_direction = ET.SubElement(platform, prepend_mmd('orbit_direction'))
         orbit_direction.text = metadata['orbitDirection']
-
+    platform_resource = ET.SubElement(platform, prepend_mmd('platform_resource'))
     instrument = ET.SubElement(platform, prepend_mmd('instrument'))
     s_name = ET.SubElement(instrument, prepend_mmd('short_name'))
     s_name.text = metadata['instrument']
     l_name = ET.SubElement(instrument, prepend_mmd('long_name'))
-    if metadata['platform'] in ['Sentinel-1A', 'Sentinel-1B']:
-        l_name.text = 'Synthetic Aperture Radar (C-band)'
-    elif metadata['platform'] in ['Sentinel-2A', 'Sentinel-2B']:
-        l_name.text = 'Multi-Spectral Imager for Sentinel-2'
-    elif metadata['platform'] in ['Sentinel-3A', 'Sentinel-3B']:
-        l_name.text = 'Sea and Land Surface Temperature Radiometer'
-    elif metadata['platform'] in ['Sentinel-5P']:
-        l_name.text = 'Tropospheric Monitoring Instrument'
-    else:
-        l_name.text = 'Unknown Platform'
-
     instrument_resource = ET.SubElement(instrument, prepend_mmd('resource'))
-    if metadata['platform'] in ['Sentinel-1A','Sentinel-1B']:
-        instrument_resource.text = global_data['S1A']['instrument_vocabulary']
-    elif metadata['platform'] == 'Sentinel-2A':
-        instrument_resource.text = global_data['S2A']['instrument_vocabulary']
-    elif metadata['platform'] == 'Sentinel-2B':
-        instrument_resource.text = global_data['S2B']['instrument_vocabulary']
-    elif metadata['platform'] == 'Sentinel-3A':
-        instrument_resource.text = 'https://space.oscar.wmo.int/satellites/view/sentinel_3a'
-    elif metadata['platform'] == 'Sentinel-3B':
-        instrument_resource.text = 'https://space.oscar.wmo.int/satellites/view/sentinel_3b'
-    elif metadata['platform'] == 'Sentinel-5P':
-        instrument_resource.text = 'https://space.oscar.wmo.int/satellites/view/sentinel_5p'
-    else:
-        instrument_resource.text = 'Unknown instrument_resource'
 
     mode = ET.SubElement(instrument, prepend_mmd('mode'))
     mode.text = metadata['sensorMode']
@@ -396,26 +473,61 @@ def create_xml(metadata, id, global_data):
     related_information = ET.SubElement(root, prepend_mmd('related_information'))
     related_type = ET.SubElement(related_information, prepend_mmd('type'))
     related_desc = ET.SubElement(related_information, prepend_mmd('description'))
-
     related_res = ET.SubElement(related_information, prepend_mmd('resource'))
 
-    if metadata['platform'] in ['Sentinel-1A', 'Sentinel-1B']:
-        related_type.text = global_data['S1']['related_information_type']
-        related_desc.text = global_data['S1']['related_information_description']
-        related_res.text = global_data['S1']['related_information_resource']
-    elif metadata['platform'] in ['Sentinel-2A', 'Sentinel-2B']:
-        related_type.text = global_data['S2']['related_information_type']
-        related_desc.text = global_data['S2']['related_information_description']
-        related_res.text = global_data['S2']['related_information_resource']
-    elif metadata['platform'] in ['Sentinel-3A', 'Sentinel-3B']:
-        related_type.text = global_data['S2']['related_information_type']
-        related_desc.text = global_data['S2']['related_information_description']
-        related_res.text = 'https://sentiwiki.copernicus.eu/web/s3-mission'
-    elif metadata['platform'] == 'Sentinel-5P':
-        related_type.text = global_data['S2']['related_information_type']
-        related_desc.text = global_data['S2']['related_information_description']
-        related_res.text = 'https://sentiwiki.copernicus.eu/web/s5p-mission'
+    # TODO: Add for S6
+    if metadata['platform'].startswith('S1'):
+        satellites = ['A', 'B', 'C', 'D']
+        for sat in satellites:
+            if filename.startswith(f'S1{sat}'):
+                l_name.text = global_data[f'S1{sat}']['instrument']
+                instrument_resource.text = global_data[f'S1{sat}']['instrument_vocabulary']
+                platform_resource.text = global_data[f'S1{sat}']['platform_vocabulary']
+                related_type.text = global_data[f'S1{sat}']['related_information_type']
+                related_desc.text = global_data[f'S1{sat}']['related_information_description']
+                related_res.text = global_data[f'S1{sat}']['related_information_resource']
+                break
+    elif metadata['platform'].startswith('S2'):
+        satellites = ['A', 'B', 'C', 'D']
+        for sat in satellites:
+            if filename.startswith(f'S2{sat}'):
+                l_name.text = global_data[f'S2{sat}']['instrument']
+                instrument_resource.text = global_data[f'S2{sat}']['instrument_vocabulary']
+                platform_resource.text = global_data[f'S2{sat}']['platform_vocabulary']
+                related_type.text = global_data[f'S2{sat}']['related_information_type']
+                related_desc.text = global_data[f'S2{sat}']['related_information_description']
+                related_res.text = global_data[f'S2{sat}']['related_information_resource']
+                break
+    elif metadata['platform'].startswith('S3'):
+        products = ['OL', 'SL', 'SY', 'SR']
+        satellites = ['A', 'B', 'C', 'D']
+        for sat in satellites:
+            for product in products:
+                if filename.startswith(f'S3{sat}_{product}'):
+                    l_name.text = global_data[f'S3_{product}']['instrument']
+                    instrument_resource.text = global_data[f'S3_{product}']['instrument_vocabulary']
+                    related_type.text = global_data[f'S3_{product}']['related_information_type']
+                    related_desc.text = global_data[f'S3_{product}']['related_information_description']
+                    related_res.text = global_data[f'S3_{product}']['related_information_resource']
+                    platform_resource.text = global_data[f'S3{sat}']['platform_vocabulary']
+                    break
+    elif metadata['platform'].startswith('S5'):
+        l_name.text = global_data['S5P']['instrument']
+        instrument_resource.text = global_data['S5P']['instrument_vocabulary']
+        platform_resource.text = global_data[f'S5P']['platform_vocabulary']
+        related_type.text = global_data[f'S5P']['related_information_type']
+        related_desc.text = global_data[f'S5P']['related_information_description']
+        related_res.text = global_data[f'S5P']['related_information_resource']
+    elif metadata['platform'].startswith('S6'):
+        satellites = ['A', 'B', 'C']
+        for sat in satellites:
+            if filename.startswith(f'S6{sat}'):
+                platform_resource.text = global_data[f'S6{sat}']['platform_vocabulary']
+                break
     else:
+        l_name.text = 'Unknown Instrument'
+        instrument_resource.text = 'Unknown instrument_resource'
+        platform_resource.text = 'Unknown platform resource'
         related_type.text = 'Unknown related information type'
         related_desc.text = 'Unknown related information description'
         related_res.text =  'Unknown related information resource'
@@ -438,7 +550,7 @@ def save_xml_to_file(xml_element, output_path):
     tree = ET.ElementTree(xml_element)
     tree.write(output_path, encoding='utf-8', xml_declaration=True, pretty_print=True)
 
-def main(filename, yaml_path, output_path, overwrite):
+def main(filename, yaml_path, output_path, overwrite, filepath):
     try:
         metadata, id = get_metadata_from_opensearch(filename)
         global_attributes = load_global_attributes(yaml_path)
@@ -454,7 +566,7 @@ def main(filename, yaml_path, output_path, overwrite):
             except ET.ParseError:
                 print(f"Couldn't parse existing file: {output_path}")
 
-        mmd_xml = create_xml(metadata, id, global_attributes)
+        mmd_xml = create_xml(metadata, id, global_attributes, filename, filepath)
         save_xml_to_file(mmd_xml, output_path)
         print(f'Metadata XML file saved to {output_path}')
     except requests.exceptions.RequestException as e:
@@ -465,7 +577,7 @@ def main(filename, yaml_path, output_path, overwrite):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Generate an MMD file from Copernicus metadata.')
     parser.add_argument(
-        '--filename', '-f', type=str, required=True,
+        '--product', '-p', type=str, required=True,
         help='The product filename to fetch metadata for.'
     )
     parser.add_argument(
@@ -480,6 +592,10 @@ if __name__ == "__main__":
         '-o', '--overwrite', action='store_true',
         help='Overwrite existing elements if they exist.'
     )
+    parser.add_argument(
+        '-f', '--filepath', type=str, required=False,
+        help='Filepath to the data file, used to obtain orbit direction. Will become deprecated once predictable.'
+    )
 
     args = parser.parse_args()
 
@@ -487,4 +603,4 @@ if __name__ == "__main__":
         print(f'Output path is a directory, not a file: {args.mmd_path}')
         sys.exit(1)
 
-    main(args.filename, args.yaml_path, args.mmd_path, args.overwrite)
+    main(args.product, args.yaml_path, args.mmd_path, args.overwrite, args.filepath)

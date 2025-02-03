@@ -28,13 +28,29 @@ PRODUCTS=(
     "S5P_NRTI_L2__NO2____20250113T090414_20250113T090914_37582_03_020800_20250113T095726" #
 )
 
+PRODUCTS=(
+    "S1B_IW_SLC__1SDV_20210928T070156_20210928T070226_028895_0372C9_DAA1"
+    "S2A_MSIL2A_20240806T175911_N0511_R041_T27XVK_20240806T234100"
+    "S2B_MSIL1C_20240317T130759_N0510_R081_T35XMH_20240317T133928"
+    "S3A_SR_1_SRA____20221122T102040_20221122T103040_20221122T123949_0599_092_222______PS1_O_NR_004"
+    "S5P_OFFL_L1B_RA_BD4_20210926T025310_20210926T043439_20483_02_020000_20210927T072924"
+)
+
 # Loop through each product
 for PRODUCT in "${PRODUCTS[@]}"
 do
+    # Check if product starts with "S5"
+    if [[ $PRODUCT == S5* ]]; then
+        # If product starts with S5, use .nc extension
+        PRODUCT_FILEPATH="source_files/${PRODUCT}.nc"
+    else
+        # Otherwise, use .zip extension
+        PRODUCT_FILEPATH="source_files/${PRODUCT}.zip"
+    fi
     # Construct the output XML file name
-    XML_FILE="${PRODUCT}_test.xml"
+    XML_FILE="${PRODUCT}.xml"
 
     # Run the Python script
     echo "Processing $PRODUCT..."
-    python3 create_mmd.py -f "$PRODUCT" -y "$YAML_FILE" -m "$XML_FILE"
+    python3 create_mmd.py -p "$PRODUCT" -y "$YAML_FILE" -m "$XML_FILE" -f "$PRODUCT_FILEPATH"
 done
