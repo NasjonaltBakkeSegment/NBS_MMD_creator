@@ -149,7 +149,7 @@ def orbit_direction_from_data(filepath=None):
                         if filename.startswith('S1'):
                             pass_element = root.findall(".//s1:pass", namespaces=namespaces)
                             direction = pass_element[0].text
-                            return direction.upper()
+                            return direction.lower()
                         elif filename.startswith('S2') or filename.startswith('S3'):
                             if filename.startswith('S2'):
                                 orbit_number_element = root.xpath("//safe:orbitNumber", namespaces=namespaces)
@@ -157,13 +157,13 @@ def orbit_direction_from_data(filepath=None):
                                 orbit_number_element = root.xpath("//sentinel-safe:orbitNumber", namespaces=namespaces)
                             if orbit_number_element:
                                 direction = orbit_number_element[0].get('groundTrackDirection')
-                                return direction.upper()
+                                return direction.lower()
                             else:
-                                return 'UNKNOWN'
+                                return ''
                         else:
-                            return 'UNKNOWN'
+                            return ''
                 else:
-                    return 'UNKNOWN'
+                    return ''
         elif filename.startswith('S5'):
             return None
         else:
@@ -176,6 +176,22 @@ def extract_coordinates(xml_string):
     if match:
         return match.group(1).strip()
     return ""
+
+def get_bounding_box(coords):
+    """
+    Given a list of coordinate strings in the format 'longitude latitude',
+    returns the bounding box as (north, south, east, west).
+    """
+    lon_lat_pairs = [tuple(map(float, coord.split())) for coord in coords]
+
+    lons, lats = zip(*lon_lat_pairs)
+
+    north = max(lats)
+    south = min(lats)
+    east = max(lons)
+    west = min(lons)
+
+    return north, south, east, west
 
 def get_zip_checksum(zip_filepath):
     md5_check = hashlib.md5()
@@ -238,6 +254,8 @@ def create_xml(metadata, id, global_data, filename, filepath=None):
         ttt = ttt.split(' ')
         for i,elem in enumerate(ttt):
             ttt[i] = elem.replace(',',' ')
+
+        northmost, southmost, eastmost, westmost = get_bounding_box(ttt)
 
         if within_sios(ttt):
             collection = ET.SubElement(root, prepend_mmd('collection'))
@@ -329,6 +347,16 @@ def create_xml(metadata, id, global_data, filename, filepath=None):
 
     if metadata['gmlgeometry'] is not None:
         geographic_extent = ET.SubElement(root, prepend_mmd('geographic_extent'))
+        rectangle = ET.SubElement(geographic_extent, prepend_mmd('rectangle'))
+        rectangle.attrib['srsName'] = 'EPSG:4326'
+        north = ET.SubElement(rectangle, prepend_mmd('north'))
+        south = ET.SubElement(rectangle, prepend_mmd('south'))
+        east = ET.SubElement(rectangle, prepend_mmd('east'))
+        west = ET.SubElement(rectangle, prepend_mmd('west'))
+        north.text = str(northmost)
+        south.text = str(southmost)
+        east.text = str(eastmost)
+        west.text = str(westmost)
         polygon = ET.SubElement(geographic_extent, prepend_mmd('polygon'))
         sub_poly = ET.SubElement(polygon, prepend_gml('Polygon'))
         sub_poly.attrib['id'] = 'polygon'
@@ -399,7 +427,6 @@ def create_xml(metadata, id, global_data, filename, filepath=None):
 
     if filepath:
         try:
-
             if file_extension == '.zip':
                 checksum.text = get_zip_checksum(filepath)
             elif file_extension == '.nc':
@@ -414,7 +441,7 @@ def create_xml(metadata, id, global_data, filename, filepath=None):
     project = ET.SubElement(root, prepend_mmd('project'))
     project_s_name = ET.SubElement(project, prepend_mmd('short_name'))
     project_s_name.text = global_data['global']['project_short_name']
-    project_l_name = ET.SubElement(project, prepend_xml('long_name'))
+    project_l_name = ET.SubElement(project, prepend_mmd('long_name'))
     project_l_name.text = global_data['global']['project']
 
     platform = ET.SubElement(root, prepend_mmd('platform'))
@@ -422,6 +449,7 @@ def create_xml(metadata, id, global_data, filename, filepath=None):
     platform_long_name = ET.SubElement(platform, prepend_mmd('long_name'))
     platform_short_name.text = metadata['platform'].replace('S','Sentinel-')
     platform_long_name.text = metadata['platform'].replace('S','Sentinel-')
+    platform_resource = ET.SubElement(platform, prepend_mmd('resource'))
     orbit_relative = ET.SubElement(platform, prepend_mmd('orbit_relative'))
     orbit_relative.text = str(metadata['relativeOrbitNumber'] )
     orbit_absolute = ET.SubElement(platform, prepend_mmd('orbit_absolute'))
@@ -430,29 +458,47 @@ def create_xml(metadata, id, global_data, filename, filepath=None):
         direction = orbit_direction_from_data(filepath)
         if direction:
             orbit_direction = ET.SubElement(platform, prepend_mmd('orbit_direction'))
-            orbit_direction.text = direction
+            orbit_direction.text = direction.lower()
         else:
             # Can't currently find the orbit direction for S5 products
             pass
     else:
         orbit_direction = ET.SubElement(platform, prepend_mmd('orbit_direction'))
-        orbit_direction.text = metadata['orbitDirection']
-    platform_resource = ET.SubElement(platform, prepend_mmd('platform_resource'))
+        orbit_direction.text = metadata['orbitDirection'].lower()
     instrument = ET.SubElement(platform, prepend_mmd('instrument'))
     s_name = ET.SubElement(instrument, prepend_mmd('short_name'))
     s_name.text = metadata['instrument']
     l_name = ET.SubElement(instrument, prepend_mmd('long_name'))
     instrument_resource = ET.SubElement(instrument, prepend_mmd('resource'))
 
-    mode = ET.SubElement(instrument, prepend_mmd('mode'))
-    mode.text = metadata['sensorMode']
-
-    if 'polarisation' in metadata:
-        polarisation = ET.SubElement(instrument, prepend_mmd('polarisation'))
-        polarisation.text = metadata['polarisation'].replace('&','+')
+    if filename.startswith('S1'):
+        mode = ET.SubElement(instrument, prepend_mmd('mode'))
+        mode.text = metadata['sensorMode']
+        if 'polarisation' in metadata:
+            polarisation = ET.SubElement(instrument, prepend_mmd('polarisation'))
+            polarisation.text = metadata['polarisation'].replace('&','+')
 
     product_type = ET.SubElement(instrument, prepend_mmd('product_type'))
-    product_type.text = metadata['productType']
+    if metadata['platform'].startswith('S1'):
+        product_types = ['SLC','GRD','OCN']
+        for p in product_types:
+            if p in metadata['productType']:
+                product_type.text = p
+                break
+    elif metadata['platform'].startswith('S2'):
+        satellites = ['A', 'B', 'C', 'D']
+        products = ['MSIL1C','MSIL2A']
+        for sat in satellites:
+            for p in products:
+                if filename.startswith(f'S2{sat}_{p}'):
+                    product_type.text = 'S2' + p.replace('L','')
+                    break
+    elif metadata['platform'].startswith('S3'):
+        product_type.text = filename[4:15]
+    elif metadata['platform'].startswith('S5'):
+        product_type.text = filename[9:19]
+    else:
+        product_types = []
 
     ancillary = ET.SubElement(platform, prepend_mmd('ancillary'))
     cloud_coverage = ET.SubElement(ancillary, prepend_mmd('cloud_coverage'))
