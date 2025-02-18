@@ -512,7 +512,7 @@ def create_xml(metadata, id, global_attributes, platform_metadata, product_metad
     collection.text = 'NBS'
 
     if 'coords' in metadata.keys():
-        if within_sios(coord_strings=metadata['coords']): # TODO: Need to do this also if only bounding box provided
+        if within_sios(coord_strings=metadata['coords']):
             collection = ET.SubElement(root, prepend_mmd('collection'))
             collection.text = 'SIOS'
         else:
@@ -654,9 +654,11 @@ def create_xml(metadata, id, global_attributes, platform_metadata, product_metad
     file_name = ET.SubElement(storage_information, prepend_mmd('file_name'))
     file_name.text = filename
     file_format = ET.SubElement(storage_information, prepend_mmd('file_format'))
-    # TODO: Doesn't work for SEN3
-    if file_extension in ['.zip','SAFE']:
-        file_format.text = 'SAFE'
+    if file_extension in ['.zip','SAFE','SEN3']:
+        if filename.startswith('S3'):
+            file_format.text = 'SEN3'
+        elif filename.startswith('S1') or filename.startswith('S2'):
+            file_format.text = 'SAFE'
     elif file_extension == '.nc':
         file_format.text = 'NetCDF'
     file_size = ET.SubElement(storage_information, prepend_mmd('file_size'))
