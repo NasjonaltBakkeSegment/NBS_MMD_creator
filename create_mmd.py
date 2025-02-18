@@ -6,11 +6,95 @@ import os
 import argparse
 import hashlib
 from datetime import datetime
-from shapely.geometry import Polygon, LinearRing
+from shapely.geometry import Polygon, LinearRing, box
 import zipfile
 import re
+import h5py
+import uuid
+import pandas as pd
 
-def within_sios(coord_strings):
+# Load the filepaths from the YAML file
+with open('config/config.yaml', 'r') as file:
+    config = yaml.safe_load(file)
+
+# Add the repository paths to sys.path
+repos = config.get('repos', {})
+for repo_name, repo_path in repos.items():
+    if os.path.exists(repo_path):
+        sys.path.append(repo_path)
+    else:
+        print(f"Warning: The path {repo_path} does not exist.")
+
+#TODO: This needs to be configured to work for S3 and S5 once we have decided on product types
+from sentinel_parent_id_generator.generate_parent_id import generate_parent_id
+
+def check_metadata(metadata: dict, id: str) -> bool:
+    """
+    Checks if the metadata dictionary contains the required keys
+    and if the id variable is a valid UUID.
+
+    Parameters:
+    metadata (dict): The metadata dictionary to check.
+    id (str): The identifier to validate as a UUID.
+
+    Returns:
+    bool: True if all checks pass, False otherwise.
+    """
+    required_keys = {"north", "south", "east", "west", "orbitNumber", "completionDate", "startDate"}
+
+    missing_keys = required_keys - metadata.keys()  # Find keys that are in required_keys but not in metadata
+
+    if missing_keys:
+        print("Missing keys:", missing_keys)
+        return False
+
+    # Check if id is a valid UUID
+    try:
+        uuid.UUID(id)
+    except ValueError:
+        return False
+
+    return True
+
+def get_product_metadata(product_metadata_df, esa_product_type):
+    """
+    Extracts all non-empty values from a single row where 'Alias (ESA product type)'
+    matches the given esa_product_type.
+
+    Parameters:
+        product_metadata_df (pd.DataFrame): The input DataFrame.
+        esa_product_type (str): The value to match in 'Alias (ESA product type)'.
+
+    Returns:
+        dict: A dictionary of column names and their non-empty values.
+    """
+    # Filter the DataFrame for the matching row
+    row = product_metadata_df[product_metadata_df['Alias (ESA product type)'] == esa_product_type]
+
+    # Extract non-empty values
+    if not row.empty:
+        return {col: row.iloc[0][col] for col in row.columns if pd.notna(row.iloc[0][col]) and row.iloc[0][col] != ''}
+    else:
+        return {}
+
+def get_size_mb(path):
+    """Returns the size of a file or the uncompressed size of a ZIP in MB."""
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"The path '{path}' does not exist.")
+
+    if os.path.isfile(path):
+        # Check if it's a zip file
+        if zipfile.is_zipfile(path):
+            with zipfile.ZipFile(path, 'r') as zip_ref:
+                size_bytes = sum(file.file_size for file in zip_ref.infolist())
+        else:
+            size_bytes = os.path.getsize(path)  # Regular file size
+    else:
+        raise ValueError(f"'{path}' is not a file.")
+
+    return size_bytes / (1024 * 1024)  # Convert to MB
+
+def within_sios(coord_strings=None,north=None,south=None,east=None,west=None):
     # Parse the SIOS polygon
     sios_polygon = Polygon([
         (-20, 70),
@@ -20,38 +104,49 @@ def within_sios(coord_strings):
         (-20, 70)
     ])
 
-    # Try to convert directly, and fall back to regex extraction if needed
-    try:
-        # Attempt to parse coordinates directly from coord_strings
-        linear_ring_coords = [tuple(map(float, coord.split())) for coord in coord_strings]
+    if coord_strings:
+        # Try to convert directly, and fall back to regex extraction if needed
+        try:
+            # Attempt to parse coordinates directly from coord_strings
+            linear_ring_coords = [tuple(map(float, coord.split())) for coord in coord_strings]
 
-        # Create a Shapely LinearRing from the coordinates
-        linear_ring = LinearRing(linear_ring_coords)
+            # Create a Shapely LinearRing from the coordinates
+            linear_ring = LinearRing(linear_ring_coords)
 
-        # Check if the LinearRing intersects the SIOS polygon
-        return linear_ring.intersects(sios_polygon)
+            # Check if the LinearRing intersects the SIOS polygon
+            return linear_ring.intersects(sios_polygon)
 
-    except ValueError:
-        # If a ValueError occurs (e.g., invalid format like XML/GML), fallback to regex method
-        linear_ring_coords = []
+        except ValueError:
+            # If a ValueError occurs (e.g., invalid format like XML/GML), fallback to regex method
+            linear_ring_coords = []
 
-        # Regular expression to match coordinates (e.g., -8.766348 57.313187)
-        coord_pattern = re.compile(r"(-?\d+\.\d+) (-?\d+\.\d+)")
+            # Regular expression to match coordinates (e.g., -8.766348 57.313187)
+            coord_pattern = re.compile(r"(-?\d+\.\d+) (-?\d+\.\d+)")
 
-        # Loop through each coordinate string
-        for coord_string in coord_strings:
-            # Find all coordinate pairs in the string using regex
-            matches = coord_pattern.findall(coord_string)
+            # Loop through each coordinate string
+            for coord_string in coord_strings:
+                # Find all coordinate pairs in the string using regex
+                matches = coord_pattern.findall(coord_string)
 
-            # Convert matched coordinates to tuples of floats and add to the list
-            for match in matches:
-                linear_ring_coords.append((float(match[0]), float(match[1])))
+                # Convert matched coordinates to tuples of floats and add to the list
+                for match in matches:
+                    linear_ring_coords.append((float(match[0]), float(match[1])))
 
-        # Create a Shapely LinearRing from the coordinates
-        linear_ring = LinearRing(linear_ring_coords)
+            # Create a Shapely LinearRing from the coordinates
+            linear_ring = LinearRing(linear_ring_coords)
 
-        # Check if the LinearRing intersects the SIOS polygon
-        return linear_ring.intersects(sios_polygon)
+            # Check if the LinearRing intersects the SIOS polygon
+            return linear_ring.intersects(sios_polygon)
+
+    elif north is not None and south is not None and east is not None and west is not None:
+        # Create a bounding box Polygon
+        bbox = box(west, south, east, north)
+
+        # Check if the bounding box intersects the SIOS polygon
+        return bbox.intersects(sios_polygon)
+
+    return False  # Default return if neither condition is met
+
 
 def get_collection_from_filename(filename):
     if filename.startswith('S1'):
@@ -60,14 +155,212 @@ def get_collection_from_filename(filename):
         return 'Sentinel2'
     elif filename.startswith('S3'):
         return 'Sentinel3'
-    elif filename.startswith('S5P'):
+    elif filename.startswith('S5'):
         return 'Sentinel5P'
     elif filename.startswith('S6'):
         return 'Sentinel6'
     else:
         raise ValueError('Unknown filename prefix; unable to determine collection')
 
+def get_metadata_from_safe(zip_file):
+
+    base = os.path.basename(zip_file)
+    source_file = base.split('.')[0] + '.SAFE'
+
+    xml_file = 'manifest.safe'
+    xml_file_path = os.path.join(source_file, xml_file)
+
+    metadata = {}
+
+    # Open the ZIP file and read the manifest.safe file
+    with zipfile.ZipFile(zip_file, 'r') as z:
+        if xml_file_path in z.namelist():
+            with z.open(xml_file_path) as f:
+
+                tree = ET.parse(f)
+                root = tree.getroot()
+
+                # Extract namespaces
+                namespaces = root.nsmap
+
+                orbit_number_element = root.xpath("//safe:orbitNumber", namespaces=namespaces)
+                if orbit_number_element:
+                    metadata['orbitNumber'] = orbit_number_element[0].text
+                    orbitDirection = orbit_number_element[0].get('groundTrackDirection')
+                    if orbitDirection:
+                        if orbitDirection[0].lower() in ['d', 'D', 'descending', 'DESCENDING']:
+                            metadata['orbitDirection'] = 'descending'
+                        elif orbitDirection[0].lower() in ['a', 'A', 'ascending', 'ASCENDING']:
+                            metadata['orbitDirection'] = 'ascending'
+                    else:
+                        orbit_direction_element = root.xpath("//s1:pass", namespaces=namespaces)
+                        if orbit_direction_element:
+                            metadata['orbitDirection'] = orbit_direction_element[0].text.lower()
+
+                relative_orbit_number_element = root.xpath("//safe:relativeOrbitNumber", namespaces=namespaces)
+                if relative_orbit_number_element:
+                    metadata['relativeOrbitNumber'] = relative_orbit_number_element[0].text
+
+                start_time_element = root.xpath("//safe:startTime", namespaces=namespaces)
+                if start_time_element:
+                    metadata['startDate'] = start_time_element[0].text
+
+                stop_time_element = root.xpath("//safe:stopTime", namespaces=namespaces)
+                if stop_time_element:
+                    metadata['completionDate'] = stop_time_element[0].text
+                elif start_time_element:
+                    metadata['completionDate'] = start_time_element[0].text
+
+                gml_element = root.xpath("//gml:coordinates", namespaces=namespaces)
+                if gml_element:
+                    metadata['polygon'] = gml_element[0].text
+                    # coordinates in S1 are comma separated, e.g. lat,lon lat,lon lat,lon
+                    # coordinates in S2 are space separated, e.g. lat lon lat lon lat lon
+                    metadata['polygon'] = metadata['polygon'].replace(',', ' ')
+
+                    # Polygon in SAFE file is lat,lon lat,lon etc...
+                    # But polygon through OpenSearch is lon,lat lon,lat etc...
+                    # So need to flip the coordinates round here to be consistent since this program supports retrieves pulling metadata from either OpenSearch or the file.
+                    coords = list(map(float, metadata['polygon'].split()))
+                    flipped_coords = [f"{lat} {lon}" for lon, lat in zip(coords[0::2], coords[1::2])]
+                    metadata['polygon'] = " ".join(flipped_coords)
+
+                    try:
+                        (
+                            metadata['north'],
+                            metadata['south'],
+                            metadata['east'],
+                            metadata['west'],
+                            metadata['coords']
+                        ) = get_bounding_box(metadata['polygon'])
+                    except:
+                        print('Failed to compute bounding box from GML')
+
+                if base.startswith('S1'):
+
+                    mode_element = root.xpath("//s1sarl1:mode", namespaces=namespaces)
+                    if mode_element:
+                        metadata['sensorMode'] = mode_element[0].text
+
+                    polarisation_element = root.xpath("//s1sarl1:transmitterReceiverPolarisation", namespaces=namespaces)
+                    if polarisation_element:
+                        polarisation0 = polarisation_element[0].text
+                        if len(polarisation_element) == 2:
+                            metadata['polarisation'] = polarisation0 + '+' + polarisation_element[1].text
+                        elif len(polarisation_element) == 1:
+                            metadata['polarisation'] = polarisation0
+                        else:
+                            pass
+
+        mtd_files = [f for f in z.namelist() if f.startswith(f"{source_file}/MTD_") and f.endswith(".xml")]
+
+        if not mtd_files:
+            pass
+        else:
+            xml_file_path = mtd_files[0]
+
+        with z.open(xml_file_path) as f:
+            tree = ET.parse(f)
+            root = tree.getroot()
+
+            cloud_cover_element = root.xpath("//*[local-name()='Cloud_Coverage_Assessment']")
+            if cloud_cover_element:
+                metadata['cloudCover'] = cloud_cover_element[0].text
+
+    return metadata
+
+def get_metadata_from_sen3(sen3_file):
+
+    zip_file = sen3_file.split('.')[0] + '.zip'
+
+    base = os.path.basename(sen3_file)
+    source_file = base.split('.')[0] + '.SEN3'
+
+    xml_file = 'xfdumanifest.xml'
+    xml_file_path = os.path.join(source_file, xml_file)
+
+    metadata = {}
+
+    # Open the ZIP file and read the manifest.safe file
+    with zipfile.ZipFile(zip_file, 'r') as z:
+        if xml_file_path in z.namelist():
+            with z.open(xml_file_path) as f:
+                tree = ET.parse(f)
+                root = tree.getroot()
+
+                # Extract namespaces
+                namespaces = root.nsmap
+
+                orbit_number_element = root.xpath("//sentinel-safe:orbitNumber", namespaces=namespaces)
+                if orbit_number_element:
+                    metadata['orbitNumber'] = orbit_number_element[0].text
+                    direction = orbit_number_element[0].get('groundTrackDirection').lower()
+                    metadata['orbitDirection'] = direction
+
+                relative_orbit_number_element = root.xpath("//sentinel-safe:relativeOrbitNumber", namespaces=namespaces)
+                if relative_orbit_number_element:
+                    metadata['relativeOrbitNumber'] = relative_orbit_number_element[0].text
+
+                start_time_element = root.xpath("//sentinel-safe:startTime", namespaces=namespaces)
+                if start_time_element:
+                    metadata['startDate'] = start_time_element[0].text
+
+                stop_time_element = root.xpath("//sentinel-safe:stopTime", namespaces=namespaces)
+                if stop_time_element:
+                    metadata['completionDate'] = stop_time_element[0].text
+
+                gml_element = root.xpath("//gml:posList", namespaces=namespaces)
+                if gml_element:
+                    metadata['polygon'] = gml_element[0].text
+                    # Polygon in SAFE file is lat,lon lat,lon etc...
+                    # But polygon through OpenSearch is lon,lat lon,lat etc...
+                    # So need to flip the coordinates round here to be consistent since this program supports retrieves pulling metadata from either OpenSearch or the file.
+                    coords = list(map(float, metadata['polygon'].split()))
+                    flipped_coords = [f"{lat} {lon}" for lon, lat in zip(coords[0::2], coords[1::2])]
+                    metadata['polygon'] = " ".join(flipped_coords)
+                    try:
+                        (
+                            metadata['north'],
+                            metadata['south'],
+                            metadata['east'],
+                            metadata['west'],
+                            metadata['coords']
+                        ) = get_bounding_box(metadata['polygon'])
+                    except:
+                        print('Failed to compute bounding box from GML')
+
+                cloud_cover_element = root.xpath("//sentinel3:cloudyPixels", namespaces=namespaces)
+                if cloud_cover_element:
+                    metadata['cloudCover'] = cloud_cover_element[0].get('percentage').lower()
+
+    return metadata
+def get_metadata_from_netcdf(netcdf_file):
+
+    with h5py.File(netcdf_file, "r") as f:
+        global_attrs = dict(f.attrs)
+
+    mapping = {
+        'startDate': 'time_coverage_start',
+        'completionDate': 'time_coverage_end',
+        'north': 'geospatial_lat_max',
+        'south': 'geospatial_lat_min',
+        'east': 'geospatial_lon_max',
+        'west': 'geospatial_lon_min',
+        'orbitNumber': 'orbit'
+    }
+
+    metadata = {}
+
+    for key, val in mapping.items():
+        if val in global_attrs.keys():
+            metadata[key] = global_attrs[val]
+        else:
+            pass
+
+    return metadata
+
 def get_metadata_from_opensearch(filename):
+
     collection = get_collection_from_filename(filename)
     base_url = f'https://catalogue.dataspace.copernicus.eu/resto/api/collections/{collection}/search.json'
 
@@ -101,9 +394,9 @@ def get_metadata_from_opensearch(filename):
             raise ValueError('No metadata found for the given filename.')
     else:
         print(f"API Request failed with status code {response.status_code}")  # Debug statement for failed request
-        response.raise_for_status()
+        raise ValueError('No metadata found for the given filename.')
 
-def load_global_attributes(yaml_path):
+def load_config(yaml_path):
     with open(yaml_path, 'r') as file:
         return yaml.safe_load(file)
 
@@ -120,68 +413,20 @@ def create_root_with_namespaces(tag: str, namespaces: dict) -> ET.Element:
     nsmap = {f'xmlns:{prefix}': uri for prefix, uri in namespaces.items()}
     return ET.Element(f'{{{namespaces["mmd"]}}}{tag}', nsmap)
 
-def orbit_direction_from_data(filepath=None):
-    '''
-    Try to extract the orbit direction from the data file
-    '''
-    if filepath:
-        filename = os.path.basename(filepath)
-        if filename.endswith(".zip"):
-
-            # File to extract from within the ZIP archive
-            if filename.startswith('S1') or filename.startswith('S2'):
-                source_file = filename.split('.')[0]+'.SAFE'
-                xml_file = source_file + "/manifest.safe"
-            elif filename.startswith('S3'):
-                source_file = filename.split('.')[0]+'.SEN3'
-                xml_file = 'xfdumanifest.xml'
-
-            # Open the ZIP file and read the manifest.safe file
-            with zipfile.ZipFile(filepath, 'r') as z:
-                if xml_file in z.namelist():
-                    with z.open(xml_file) as f:
-                        tree = ET.parse(f)
-                        root = tree.getroot()
-
-                        # Extract namespaces
-                        namespaces = root.nsmap
-
-                        if filename.startswith('S1'):
-                            pass_element = root.findall(".//s1:pass", namespaces=namespaces)
-                            direction = pass_element[0].text
-                            return direction.lower()
-                        elif filename.startswith('S2') or filename.startswith('S3'):
-                            if filename.startswith('S2'):
-                                orbit_number_element = root.xpath("//safe:orbitNumber", namespaces=namespaces)
-                            elif filename.startswith('S3'):
-                                orbit_number_element = root.xpath("//sentinel-safe:orbitNumber", namespaces=namespaces)
-                            if orbit_number_element:
-                                direction = orbit_number_element[0].get('groundTrackDirection')
-                                return direction.lower()
-                            else:
-                                return ''
-                        else:
-                            return ''
-                else:
-                    return ''
-        elif filename.startswith('S5'):
-            return None
-        else:
-            return 'UNKNOWN'
-    else:
-        return 'UNKNOWN'
-
 def extract_coordinates(xml_string):
     match = re.search(r"<gml:coordinates>(.*?)</gml:coordinates>", xml_string)
     if match:
         return match.group(1).strip()
     return ""
 
-def get_bounding_box(coords):
+def get_bounding_box(polygon):
     """
-    Given a list of coordinate strings in the format 'longitude latitude',
-    returns the bounding box as (north, south, east, west).
+    Given the GML geometry,
+    returns the bounding box as (north, south, east, west) and coords to write to the polygon element.
     """
+    polygon = polygon.replace(',', ' ')
+    coords = re.findall(r'\S+\s+\S+', polygon)
+
     lon_lat_pairs = [tuple(map(float, coord.split())) for coord in coords]
 
     lons, lats = zip(*lon_lat_pairs)
@@ -191,7 +436,7 @@ def get_bounding_box(coords):
     east = max(lons)
     west = min(lons)
 
-    return north, south, east, west
+    return north, south, east, west, coords
 
 def get_zip_checksum(zip_filepath):
     md5_check = hashlib.md5()
@@ -217,7 +462,24 @@ def get_netcdf_checksum(netcdf_filepath):
     except Exception as e:
         return str(e)
 
-def create_xml(metadata, id, global_data, filename, filepath=None):
+def create_xml(metadata, id, global_attributes, platform_metadata, product_metadata_df, filename, filepath=None):
+
+    filename_platform = filename.split('_')[0]
+    filename_mission = filename[0:2]
+    if filename.startswith('S1'):
+        filename_product_type = filename.split('_')[1] + '_' + filename.split('_')[2]
+        if filename_product_type.startswith('S'):
+            filename_product_type = filename[4:14]
+    elif filename.startswith('S2'):
+        filename_product_type = filename.split('_')[1]
+    elif filename.startswith('S3'):
+        filename_product_type = filename[4:15]
+    elif filename.startswith('S5'):
+        filename_product_type = filename[9:19]
+    else:
+        raise ValueError(f'Could not identify product type from filename')
+
+    product_metadata = get_product_metadata(product_metadata_df,filename_product_type)
 
     # TODO: The SAFE filepath will later be predictable so use this predictable filepath instead of passing an argument
     namespaces = {
@@ -226,7 +488,7 @@ def create_xml(metadata, id, global_data, filename, filepath=None):
     }
     for prefix, uri in namespaces.items():
         ET.register_namespace(prefix, uri)
-
+    parent_ID, parent_metadata, parent_name = generate_parent_id(filename)
     root = ET.Element(f'{{{namespaces["mmd"]}}}mmd', nsmap=namespaces)
 
     metadata_identifier = ET.SubElement(root, prepend_mmd('metadata_identifier'))
@@ -234,34 +496,41 @@ def create_xml(metadata, id, global_data, filename, filepath=None):
 
     title = ET.SubElement(root, prepend_mmd('title'))
     title.attrib[prepend_xml('lang')] = 'en'
-    title.text = metadata['title'].split('.')[0]
+    title.text = filename.split('.')[0]
 
     abstract = ET.SubElement(root, prepend_mmd('abstract'))
     abstract.attrib[prepend_xml('lang')] = 'en'
-    abstract.text = metadata['description']
+    abstract.text = product_metadata['description']
 
     metadata_status = ET.SubElement(root, prepend_mmd('metadata_status'))
-    metadata_status.text = global_data['global']['metadata_status']
+    metadata_status.text = global_attributes['metadata_status']
 
     dataset_production_status = ET.SubElement(root, prepend_mmd('dataset_production_status'))
-    dataset_production_status.text = global_data['global']['dataset_production_status']
+    dataset_production_status.text = global_attributes['dataset_production_status']
 
     collection = ET.SubElement(root, prepend_mmd('collection'))
     collection.text = 'NBS'
 
-    if metadata['gmlgeometry'] is not None:
-        ttt = extract_coordinates(metadata['gmlgeometry'])
-        ttt = ttt.split(' ')
-        for i,elem in enumerate(ttt):
-            ttt[i] = elem.replace(',',' ')
-
-        northmost, southmost, eastmost, westmost = get_bounding_box(ttt)
-
-        if within_sios(ttt):
+    if 'coords' in metadata.keys():
+        if within_sios(coord_strings=metadata['coords']): # TODO: Need to do this also if only bounding box provided
             collection = ET.SubElement(root, prepend_mmd('collection'))
             collection.text = 'SIOS'
         else:
             pass
+    elif {"north", "south", "east", "west"}.issubset(metadata):
+        if within_sios(
+                north=metadata['north'],
+                south=metadata['south'],
+                east=metadata['east'],
+                west=metadata['west']
+            ):
+            collection = ET.SubElement(root, prepend_mmd('collection'))
+            collection.text = 'SIOS'
+        else:
+            pass
+    else:
+        print("Coordinates not present so could not compute whether data fall within SIOS AOI")
+        pass
 
     last_metadata_update = ET.SubElement(root, prepend_mmd('last_metadata_update'))
     update = ET.SubElement(last_metadata_update, prepend_mmd('update'))
@@ -277,36 +546,8 @@ def create_xml(metadata, id, global_data, filename, filepath=None):
     end_date = ET.SubElement(temporal_extent, prepend_mmd('end_date'))
     end_date.text = metadata['completionDate']
 
-    # TODO: Add keywords and iso topics for S6
-    if metadata['platform'].startswith('S1'):
-        satellites = ['A', 'B', 'C', 'D']
-        for sat in satellites:
-            if filename.startswith(f'S1{sat}'):
-                iso_topics = global_data[f'S1{sat}']['iso_topic_category'].split(',')
-                keywords = global_data[f'S1{sat}']['keywords'].split(',')
-                break
-    elif metadata['platform'].startswith('S2'):
-        satellites = ['A', 'B', 'C', 'D']
-        for sat in satellites:
-            if filename.startswith(f'S2{sat}'):
-                iso_topics = global_data[f'S2{sat}']['iso_topic_category'].split(',')
-                keywords = global_data[f'S2{sat}']['keywords'].split(',')
-                break
-    elif metadata['platform'].startswith('S3'):
-        products = ['OL', 'SL', 'SY', 'SR']
-        satellites = ['A', 'B', 'C', 'D']
-        for sat in satellites:
-            for product in products:
-                if filename.startswith(f'S3{sat}_{product}'):
-                    iso_topics = global_data[f'S3_{product}']['iso_topic_category'].split(',')
-                    keywords = global_data[f'S3_{product}']['keywords'].split(',')
-                    break
-    elif metadata['platform'].startswith('S5'):
-        iso_topics = global_data['S5P']['iso_topic_category'].split(',')
-        keywords = global_data['S5P']['keywords'].split(',')
-    else:
-        iso_topics = []
-        keywords = []
+    iso_topics = product_metadata['iso_topic_category'].split(',')
+    keywords = product_metadata['keywords'].split(',')
 
     for topic in iso_topics:
         iso_topic_category = ET.SubElement(root, prepend_mmd('iso_topic_category'))
@@ -345,7 +586,7 @@ def create_xml(metadata, id, global_data, filename, filepath=None):
         gemet_resource = ET.SubElement(gemet_elem, prepend_mmd('resource'))
         gemet_resource.text = 'http://inspire.ec.europa.eu/theme'
 
-    if metadata['gmlgeometry'] is not None:
+    if {"north", "south", "east", "west"}.issubset(metadata):
         geographic_extent = ET.SubElement(root, prepend_mmd('geographic_extent'))
         rectangle = ET.SubElement(geographic_extent, prepend_mmd('rectangle'))
         rectangle.attrib['srsName'] = 'EPSG:4326'
@@ -353,50 +594,51 @@ def create_xml(metadata, id, global_data, filename, filepath=None):
         south = ET.SubElement(rectangle, prepend_mmd('south'))
         east = ET.SubElement(rectangle, prepend_mmd('east'))
         west = ET.SubElement(rectangle, prepend_mmd('west'))
-        north.text = str(northmost)
-        south.text = str(southmost)
-        east.text = str(eastmost)
-        west.text = str(westmost)
+        north.text = str(metadata['north'])
+        south.text = str(metadata['south'])
+        east.text = str(metadata['east'])
+        west.text = str(metadata['west'])
+    if 'coords' in metadata.keys():
         polygon = ET.SubElement(geographic_extent, prepend_mmd('polygon'))
         sub_poly = ET.SubElement(polygon, prepend_gml('Polygon'))
         sub_poly.attrib['id'] = 'polygon'
         sub_poly.attrib['srsName'] = 'EPSG:4326'
         exterior = ET.SubElement(sub_poly, prepend_gml('exterior'))
         linear_ring = ET.SubElement(exterior, prepend_gml('LinearRing'))
-        for elem in ttt:
+        for elem in metadata['coords']:
             pos = ET.SubElement(linear_ring, prepend_gml('pos'))
             pos.text = elem
     else:
-        print('Warning: gmlgeometry is None. Geographic extent will not be included in the XML.')
+        print('Warning: polygon is None. Geographic extent will not be included in the XML.')
 
     dataset_lang = ET.SubElement(root, prepend_mmd('dataset_language'))
-    dataset_lang.text = global_data['global']['dataset_language']
+    dataset_lang.text = global_attributes['dataset_language']
 
     operational_status = ET.SubElement(root, prepend_mmd('operational_status'))
-    operational_status.text = global_data['global']['processing_level']
+    operational_status.text = global_attributes['processing_level']
 
     access_cons = ET.SubElement(root, prepend_mmd('access_constraint'))
-    access_cons.text = global_data['global']['access_constraint']
+    access_cons.text = global_attributes['access_constraint']
 
     personnel_1 = ET.SubElement(root, prepend_mmd('personnel'))
     role = ET.SubElement(personnel_1, prepend_mmd('role'))
-    role.text = global_data['global']['creator_role']
+    role.text = global_attributes['creator_role']
     name = ET.SubElement(personnel_1, prepend_mmd('name'))
-    name.text = global_data['global']['creator_name']
+    name.text = global_attributes['creator_name']
     email = ET.SubElement(personnel_1, prepend_mmd('email'))
-    email.text = global_data['global']['creator_email']
+    email.text = global_attributes['creator_email']
     organisation = ET.SubElement(personnel_1, prepend_mmd('organisation'))
-    organisation.text = global_data['global']['creator_institution']
+    organisation.text = global_attributes['creator_institution']
 
     personnel_2 = ET.SubElement(root, prepend_mmd('personnel'))
     role_2 = ET.SubElement(personnel_2, prepend_mmd('role'))
-    role_2.text = global_data['global']['contributor_role']
+    role_2.text = global_attributes['contributor_role']
     name_2 = ET.SubElement(personnel_2, prepend_mmd('name'))
-    name_2.text = global_data['global']['contributor_name']
+    name_2.text = global_attributes['contributor_name']
     email_2 = ET.SubElement(personnel_2, prepend_mmd('email'))
-    email_2.text = global_data['global']['contributor_email']
+    email_2.text = global_attributes['contributor_email']
     organisation_2 = ET.SubElement(personnel_2, prepend_mmd('organisation'))
-    organisation_2.text = global_data['global']['contributor_institution']
+    organisation_2.text = global_attributes['contributor_institution']
 
     data_center = ET.SubElement(root, prepend_mmd('data_center'))
     data_center_name = ET.SubElement(data_center, prepend_mmd('data_center_name'))
@@ -405,20 +647,21 @@ def create_xml(metadata, id, global_data, filename, filepath=None):
     data_center_long = ET.SubElement(data_center_name, prepend_mmd('long_name'))
     data_center_long.text = 'Norwegian Meteorological Institute'
     data_center_url = ET.SubElement(data_center, prepend_mmd('data_center_url'))
-    data_center_url.text = global_data['global']['creator_url']
+    data_center_url.text = global_attributes['creator_url']
 
     storage_information = ET.SubElement(root, prepend_mmd('storage_information'))
     file_extension = os.path.splitext(filepath)[1].lower()  # Get the file extension (e.g., '.zip' or '.nc')
     file_name = ET.SubElement(storage_information, prepend_mmd('file_name'))
-    file_name.text = metadata['title']
+    file_name.text = filename
     file_format = ET.SubElement(storage_information, prepend_mmd('file_format'))
+    # TODO: Doesn't work for SEN3
     if file_extension in ['.zip','SAFE']:
         file_format.text = 'SAFE'
     elif file_extension == '.nc':
         file_format.text = 'NetCDF'
     file_size = ET.SubElement(storage_information, prepend_mmd('file_size'))
     file_size.attrib['unit'] = 'MB'
-    file_size_conv = metadata['services']['download']['size'] / 1048576
+    file_size_conv = get_size_mb(filepath)
     file_size.text = f'{file_size_conv:.2f}'
 
     # Compute checksum for file
@@ -440,147 +683,75 @@ def create_xml(metadata, id, global_data, filename, filepath=None):
 
     project = ET.SubElement(root, prepend_mmd('project'))
     project_s_name = ET.SubElement(project, prepend_mmd('short_name'))
-    project_s_name.text = global_data['global']['project_short_name']
+    project_s_name.text = global_attributes['project_short_name']
     project_l_name = ET.SubElement(project, prepend_mmd('long_name'))
-    project_l_name.text = global_data['global']['project']
+    project_l_name.text = global_attributes['project']
 
     platform = ET.SubElement(root, prepend_mmd('platform'))
     platform_short_name = ET.SubElement(platform, prepend_mmd('short_name'))
     platform_long_name = ET.SubElement(platform, prepend_mmd('long_name'))
-    platform_short_name.text = metadata['platform'].replace('S','Sentinel-')
-    platform_long_name.text = metadata['platform'].replace('S','Sentinel-')
+    platform_short_name.text = filename.replace('S','Sentinel-')
+    platform_long_name.text = filename.replace('S','Sentinel-')
     platform_resource = ET.SubElement(platform, prepend_mmd('resource'))
-    orbit_relative = ET.SubElement(platform, prepend_mmd('orbit_relative'))
-    orbit_relative.text = str(metadata['relativeOrbitNumber'] )
-    orbit_absolute = ET.SubElement(platform, prepend_mmd('orbit_absolute'))
-    orbit_absolute.text = str(metadata['orbitNumber'])
-    if metadata['orbitDirection'] is None:
-        direction = orbit_direction_from_data(filepath)
-        if direction:
-            orbit_direction = ET.SubElement(platform, prepend_mmd('orbit_direction'))
-            orbit_direction.text = direction.lower()
-        else:
-            # Can't currently find the orbit direction for S5 products
-            pass
-    else:
+
+    if 'relativeOrbitNumber' in metadata.keys():
+        orbit_relative = ET.SubElement(platform, prepend_mmd('orbit_relative'))
+        orbit_relative.text = str(metadata['relativeOrbitNumber'] )
+    if 'orbitNumber' in metadata.keys():
+        orbit_absolute = ET.SubElement(platform, prepend_mmd('orbit_absolute'))
+        orbit_absolute.text = str(metadata['orbitNumber'])
+    if 'orbitDirection' in metadata.keys():
         orbit_direction = ET.SubElement(platform, prepend_mmd('orbit_direction'))
-        orbit_direction.text = metadata['orbitDirection'].lower()
+        if metadata['orbitDirection'] != None:
+            orbit_direction.text = metadata['orbitDirection'].lower()
+
     instrument = ET.SubElement(platform, prepend_mmd('instrument'))
     s_name = ET.SubElement(instrument, prepend_mmd('short_name'))
-    s_name.text = metadata['instrument']
     l_name = ET.SubElement(instrument, prepend_mmd('long_name'))
     instrument_resource = ET.SubElement(instrument, prepend_mmd('resource'))
 
-    if filename.startswith('S1'):
+    if filename_mission == 'S1' and 'sensorMode' in metadata.keys():
         mode = ET.SubElement(instrument, prepend_mmd('mode'))
         mode.text = metadata['sensorMode']
-        if 'polarisation' in metadata:
+        if 'polarisation' in metadata.keys():
             polarisation = ET.SubElement(instrument, prepend_mmd('polarisation'))
             polarisation.text = metadata['polarisation'].replace('&','+')
 
     product_type = ET.SubElement(instrument, prepend_mmd('product_type'))
-    if metadata['platform'].startswith('S1'):
-        product_types = ['SLC','GRD','OCN']
-        for p in product_types:
-            if p in metadata['productType']:
-                product_type.text = p
-                break
-    elif metadata['platform'].startswith('S2'):
-        satellites = ['A', 'B', 'C', 'D']
-        products = ['MSIL1C','MSIL2A']
-        for sat in satellites:
-            for p in products:
-                if filename.startswith(f'S2{sat}_{p}'):
-                    product_type.text = 'S2' + p.replace('L','')
-                    break
-    elif metadata['platform'].startswith('S3'):
-        product_type.text = filename[4:15]
-    elif metadata['platform'].startswith('S5'):
-        product_type.text = filename[9:19]
-    else:
-        product_types = []
+    product_type.text = product_metadata['product_type']
 
     ancillary = ET.SubElement(platform, prepend_mmd('ancillary'))
-    cloud_coverage = ET.SubElement(ancillary, prepend_mmd('cloud_coverage'))
-    cloud_coverage.text =  str(metadata['cloudCover'])
+    if 'cloudCovered' in metadata.keys():
+        cloud_coverage = ET.SubElement(ancillary, prepend_mmd('cloud_coverage'))
+        cloud_coverage.text =  str(metadata['cloudCover'])
 
     spatial_representation = ET.SubElement(root, prepend_mmd('spatial_representation'))
-    spatial_representation.text = global_data['global']['spatial_representation']
+    spatial_representation.text = global_attributes['spatial_representation']
 
     activity_type = ET.SubElement(root, prepend_mmd('activity_type'))
-    activity_type.text = global_data['global']['source']
+    activity_type.text = global_attributes['source']
 
     dataset_citation = ET.SubElement(root, prepend_mmd('dataset_citation'))
     dataset_citation_author = ET.SubElement(dataset_citation, prepend_mmd('author'))
-    dataset_citation_author.text = global_data['global']['creator_name']
+    dataset_citation_author.text = global_attributes['creator_name']
     dataset_citation_title = ET.SubElement(dataset_citation, prepend_mmd('title'))
-    dataset_citation_title.text = metadata['title'].split('.')[0]
+    dataset_citation_title.text = filename.split('.')[0]
 
     related_information = ET.SubElement(root, prepend_mmd('related_information'))
     related_type = ET.SubElement(related_information, prepend_mmd('type'))
     related_desc = ET.SubElement(related_information, prepend_mmd('description'))
     related_res = ET.SubElement(related_information, prepend_mmd('resource'))
 
-    # TODO: Add for S6
-    if metadata['platform'].startswith('S1'):
-        satellites = ['A', 'B', 'C', 'D']
-        for sat in satellites:
-            if filename.startswith(f'S1{sat}'):
-                l_name.text = global_data[f'S1{sat}']['instrument']
-                instrument_resource.text = global_data[f'S1{sat}']['instrument_vocabulary']
-                platform_resource.text = global_data[f'S1{sat}']['platform_vocabulary']
-                related_type.text = global_data[f'S1{sat}']['related_information_type']
-                related_desc.text = global_data[f'S1{sat}']['related_information_description']
-                related_res.text = global_data[f'S1{sat}']['related_information_resource']
-                break
-    elif metadata['platform'].startswith('S2'):
-        satellites = ['A', 'B', 'C', 'D']
-        for sat in satellites:
-            if filename.startswith(f'S2{sat}'):
-                l_name.text = global_data[f'S2{sat}']['instrument']
-                instrument_resource.text = global_data[f'S2{sat}']['instrument_vocabulary']
-                platform_resource.text = global_data[f'S2{sat}']['platform_vocabulary']
-                related_type.text = global_data[f'S2{sat}']['related_information_type']
-                related_desc.text = global_data[f'S2{sat}']['related_information_description']
-                related_res.text = global_data[f'S2{sat}']['related_information_resource']
-                break
-    elif metadata['platform'].startswith('S3'):
-        products = ['OL', 'SL', 'SY', 'SR']
-        satellites = ['A', 'B', 'C', 'D']
-        for sat in satellites:
-            for product in products:
-                if filename.startswith(f'S3{sat}_{product}'):
-                    l_name.text = global_data[f'S3_{product}']['instrument']
-                    instrument_resource.text = global_data[f'S3_{product}']['instrument_vocabulary']
-                    related_type.text = global_data[f'S3_{product}']['related_information_type']
-                    related_desc.text = global_data[f'S3_{product}']['related_information_description']
-                    related_res.text = global_data[f'S3_{product}']['related_information_resource']
-                    platform_resource.text = global_data[f'S3{sat}']['platform_vocabulary']
-                    break
-    elif metadata['platform'].startswith('S5'):
-        l_name.text = global_data['S5P']['instrument']
-        instrument_resource.text = global_data['S5P']['instrument_vocabulary']
-        platform_resource.text = global_data[f'S5P']['platform_vocabulary']
-        related_type.text = global_data[f'S5P']['related_information_type']
-        related_desc.text = global_data[f'S5P']['related_information_description']
-        related_res.text = global_data[f'S5P']['related_information_resource']
-    elif metadata['platform'].startswith('S6'):
-        satellites = ['A', 'B', 'C']
-        for sat in satellites:
-            if filename.startswith(f'S6{sat}'):
-                platform_resource.text = global_data[f'S6{sat}']['platform_vocabulary']
-                break
-    else:
-        l_name.text = 'Unknown Instrument'
-        instrument_resource.text = 'Unknown instrument_resource'
-        platform_resource.text = 'Unknown platform resource'
-        related_type.text = 'Unknown related information type'
-        related_desc.text = 'Unknown related information description'
-        related_res.text =  'Unknown related information resource'
+    l_name.text = s_name.text = product_metadata['instrument']
+    instrument_resource.text = product_metadata['instrument_vocabulary']
+    platform_resource.text = platform_metadata[filename_platform]['platform_vocabulary']
+    related_type.text = platform_metadata[filename_platform]['related_information_type']
+    related_desc.text = platform_metadata[filename_platform]['related_information_description']
+    related_res.text = platform_metadata[filename_platform]['related_information_resource']
 
     use_constraint = ET.SubElement(root, prepend_mmd('use_constraint'))
     license_text = ET.SubElement(use_constraint, prepend_mmd('license_text'))
-    license_text.text = global_data['global']['license_text']
+    license_text.text = global_attributes['license_text']
 
     data_access = ET.SubElement(root,prepend_mmd('data_access'))
     da_type = ET.SubElement(data_access, prepend_mmd('type'))
@@ -589,17 +760,48 @@ def create_xml(metadata, id, global_data, filename, filepath=None):
     da_description.text = 'Open Data Protocol.'
     da_resource = ET.SubElement(data_access,prepend_mmd('resource'))
     da_resource.text = f"https://colhub-archive.met.no/odata/v1/Products('{id}')/$value"
+
+    related_dataset = ET.SubElement(root,prepend_mmd('related_dataset'))
+    related_dataset.attrib['relation_type'] = "parent"
+    related_dataset.text = str(parent_ID)
     return root
 
 def save_xml_to_file(xml_element, output_path):
 
     tree = ET.ElementTree(xml_element)
+    output_path = output_path.split('.')[0]+'.xml'
     tree.write(output_path, encoding='utf-8', xml_declaration=True, pretty_print=True)
 
-def main(filename, yaml_path, output_path, overwrite, filepath):
+def main(filename, global_attributes_config, platform_metadata_config, product_metadata_csv, output_path, overwrite, filepath):
+    basename = filename.split('.')[0]
     try:
-        metadata, id = get_metadata_from_opensearch(filename)
-        global_attributes = load_global_attributes(yaml_path)
+        # TODO: Make mapping file between product name and IDs for backlog
+        id = str(uuid.uuid4()) #! Do not use this line, only for testing
+        # In production, query for now, but later synchroniser should store this.
+        if filename.startswith('S5'):
+            metadata = get_metadata_from_netcdf(filepath)
+        elif filename.startswith('S3'):
+            metadata = get_metadata_from_sen3(filepath)
+        elif filename[0:2] in ['S1','S2']:
+            metadata = get_metadata_from_safe(filepath)
+        else:
+            print('MMD can not be created for', filepath)
+            sys.exit()
+        if check_metadata(metadata,id) == False:
+            metadata, id = get_metadata_from_opensearch(basename)
+            metadata['polygon'] = extract_coordinates(metadata['gmlgeometry'])
+            (
+                metadata['north'],
+                metadata['south'],
+                metadata['east'],
+                metadata['west'],
+                metadata['coords']
+            ) = get_bounding_box(metadata['polygon'])
+        else:
+            pass
+        global_attributes = load_config(global_attributes_config)
+        platform_metadata = load_config(platform_metadata_config)
+        product_metadata_df = pd.read_csv(product_metadata_csv)
 
         if os.path.exists(output_path):
             try:
@@ -612,7 +814,7 @@ def main(filename, yaml_path, output_path, overwrite, filepath):
             except ET.ParseError:
                 print(f"Couldn't parse existing file: {output_path}")
 
-        mmd_xml = create_xml(metadata, id, global_attributes, filename, filepath)
+        mmd_xml = create_xml(metadata, id, global_attributes, platform_metadata, product_metadata_df, filename, filepath)
         save_xml_to_file(mmd_xml, output_path)
         print(f'Metadata XML file saved to {output_path}')
     except requests.exceptions.RequestException as e:
@@ -627,8 +829,16 @@ if __name__ == "__main__":
         help='The product filename to fetch metadata for.'
     )
     parser.add_argument(
-        '--yaml_path', '-y', type=str, required=True,
-        help='Path to the YAML file with global attributes.'
+        '--global_attributes_config', '-g', type=str, required=True,
+        help='Path to the YAML configuration file with global attributes.'
+    )
+    parser.add_argument(
+        '--platform_metadata_config', '-pl', type=str, required=True,
+        help='Path to the YAML configuration file with metadata related to each platform.'
+    )
+    parser.add_argument(
+        '--product_metadata_csv', '-pr', type=str, required=True,
+        help='Path to the CSV file with metadata related to each product type.'
     )
     parser.add_argument(
         '--mmd_path', '-m', type=str, required=True,
@@ -649,4 +859,4 @@ if __name__ == "__main__":
         print(f'Output path is a directory, not a file: {args.mmd_path}')
         sys.exit(1)
 
-    main(args.product, args.yaml_path, args.mmd_path, args.overwrite, args.filepath)
+    main(args.product, args.global_attributes_config, args.platform_metadata_config, args.product_metadata_csv, args.mmd_path, args.overwrite, args.filepath)
