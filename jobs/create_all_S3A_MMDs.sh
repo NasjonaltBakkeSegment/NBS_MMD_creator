@@ -17,20 +17,6 @@ if [[ -z "$input_root_dir" || -z "$output_root_dir" || -z "$python_script" || -z
     exit 1
 fi
 
-# Read filepaths from the config file
-#input_root_dir=$(grep 'input_root_dir' "$ini_file" | sed 's/input_root_dir="//;s/"$//')
-#output_root_dir=$(grep 'output_root_dir' "$ini_file" | sed 's/output_root_dir="//;s/"$//')
-#python_script=$(grep 'python_script' "$ini_file" | sed 's/python_script="//;s/"$//')
-#global_attributes=$(grep 'global_attributes' "$ini_file" | sed 's/global_attributes="//;s/"$//')
-#product_metadata=$(grep 'product_metadata' "$ini_file" | sed 's/product_metadata="//;s/"$//')
-#platform_metadata=$(grep 'platform_metadata' "$ini_file" | sed 's/platform_metadata="//;s/"$//')
-
-# Ensure all required paths are read successfully
-#if [[ -z "$input_root_dir" || -z "$output_root_dir" || -z "$python_script" || -z "$yaml_file" ]]; then
-#    echo "Error: One or more configuration values are missing!"
-#    exit 1
-#fi
-
 # Store the full file paths in an array
 mapfile -t files < <(find "$input_root_dir" -type f -name 'S3A*.zip')
 
