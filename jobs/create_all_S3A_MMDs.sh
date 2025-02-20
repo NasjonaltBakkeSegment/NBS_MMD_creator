@@ -4,16 +4,32 @@ script_dir=$(dirname "$0")
 ini_file="$script_dir/filepaths.ini"
 
 # Read filepaths from the config file
-input_root_dir=$(grep 'input_root_dir' "$ini_file" | sed 's/input_root_dir="//;s/"$//')
-output_root_dir=$(grep 'output_root_dir' "$ini_file" | sed 's/output_root_dir="//;s/"$//')
-python_script=$(grep 'python_script' "$ini_file" | sed 's/python_script="//;s/"$//')
-yaml_file=$(grep 'yaml_file' "$ini_file" | sed 's/yaml_file="//;s/"$//')
+input_root_dir=$(awk -F '=' '/input_root_dir/ {gsub(/"/, "", $2); print $2}' "$ini_file")
+output_root_dir=$(awk -F '=' '/output_root_dir/ {gsub(/"/, "", $2); print $2}' "$ini_file")
+python_script=$(awk -F '=' '/python_script/ {gsub(/"/, "", $2); print $2}' "$ini_file")
+global_attributes=$(awk -F '=' '/global_attributes/ {gsub(/"/, "", $2); print $2}' "$ini_file")
+product_metadata=$(awk -F '=' '/product_metadata/ {gsub(/"/, "", $2); print $2}' "$ini_file")
+platform_metadata=$(awk -F '=' '/platform_metadata/ {gsub(/"/, "", $2); print $2}' "$ini_file")
 
 # Ensure all required paths are read successfully
-if [[ -z "$input_root_dir" || -z "$output_root_dir" || -z "$python_script" || -z "$yaml_file" ]]; then
+if [[ -z "$input_root_dir" || -z "$output_root_dir" || -z "$python_script" || -z "$global_attributes" || -z "$product_metadata" || -z "$platform_metadata" ]]; then
     echo "Error: One or more configuration values are missing!"
     exit 1
 fi
+
+# Read filepaths from the config file
+#input_root_dir=$(grep 'input_root_dir' "$ini_file" | sed 's/input_root_dir="//;s/"$//')
+#output_root_dir=$(grep 'output_root_dir' "$ini_file" | sed 's/output_root_dir="//;s/"$//')
+#python_script=$(grep 'python_script' "$ini_file" | sed 's/python_script="//;s/"$//')
+#global_attributes=$(grep 'global_attributes' "$ini_file" | sed 's/global_attributes="//;s/"$//')
+#product_metadata=$(grep 'product_metadata' "$ini_file" | sed 's/product_metadata="//;s/"$//')
+#platform_metadata=$(grep 'platform_metadata' "$ini_file" | sed 's/platform_metadata="//;s/"$//')
+
+# Ensure all required paths are read successfully
+#if [[ -z "$input_root_dir" || -z "$output_root_dir" || -z "$python_script" || -z "$yaml_file" ]]; then
+#    echo "Error: One or more configuration values are missing!"
+#    exit 1
+#fi
 
 # Store the full file paths in an array
 mapfile -t files < <(find "$input_root_dir" -type f -name 'S3A*.zip')
@@ -40,7 +56,7 @@ for filepath in "${files[@]}"; do
     # Check if the MMD file already exists
     if [ ! -e "$mmd_filepath" ]; then
         echo "Writing MMD to: $mmd_filepath"
-        python3 "$python_script" -p "$name_without_suffix" -y "$yaml_file" -m "$mmd_filepath" -f "$filepath"
+        python3 "$python_script" -p "$name_without_suffix" -g "$global_attributes" -pr "$product_metadata" -pl "$platform_metadata" -m "$mmd_filepath" -f "$filepath"
     else
         # If the file already exists, skip the Python script
         echo "MMD file $mmd_filepath already exists. Skipping."
