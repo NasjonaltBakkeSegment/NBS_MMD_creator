@@ -15,8 +15,14 @@ import pandas as pd
 import json
 import glob
 
+# Get the script's directory
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Construct the relative path to the config file
+config_path = os.path.join(script_dir, "config", "config.yaml")
+
 # Load the filepaths from the YAML file
-with open('config/config.yaml', 'r') as file:
+with open(config_path, 'r') as file:
     config = yaml.safe_load(file)
 
 # Add the repository paths to sys.path
