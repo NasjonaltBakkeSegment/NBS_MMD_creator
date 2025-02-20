@@ -1,6 +1,7 @@
 *.xml
 source_files/*
 *.ini
+mapping/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

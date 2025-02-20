@@ -12,6 +12,8 @@ import re
 import h5py
 import uuid
 import pandas as pd
+import json
+import glob
 
 # Load the filepaths from the YAML file
 with open('config/config.yaml', 'r') as file:
@@ -40,6 +42,11 @@ def check_metadata(metadata: dict, id: str) -> bool:
     Returns:
     bool: True if all checks pass, False otherwise.
     """
+    if not id:
+        return False
+    if not metadata:
+        return False
+
     required_keys = {"north", "south", "east", "west", "orbitNumber", "completionDate", "startDate"}
 
     missing_keys = required_keys - metadata.keys()  # Find keys that are in required_keys but not in metadata
@@ -774,12 +781,28 @@ def save_xml_to_file(xml_element, output_path):
     output_path = output_path.split('.')[0]+'.xml'
     tree.write(output_path, encoding='utf-8', xml_declaration=True, pretty_print=True)
 
+def get_id_from_mapping_file(filename):
+    try:
+        # Regex pattern to match the first occurrence of a 4-digit year
+        pattern = re.compile(r"(\d{4})")
+        match = pattern.search(filename)
+        year = str(match.group(1))
+        mission = get_collection_from_filename(filename).replace('Sentinel','Sentinel-')
+        filename_pattern = f"list_products_on_colhub_archive/data/{mission}_{year}0101-{year}*mapping"
+        matching_files = sorted(glob.glob(filename_pattern))
+        mapping_file = matching_files[-1]
+
+        with open(mapping_file, 'r', encoding="utf-8") as file:
+            dic = json.load(file)
+        id = dic[filename.split('.')[0]]
+        return id
+    except:
+        return None
+
 def main(filename, global_attributes_config, platform_metadata_config, product_metadata_csv, output_path, overwrite, filepath):
     basename = filename.split('.')[0]
     try:
-        # TODO: Make mapping file between product name and IDs for backlog
-        id = str(uuid.uuid4()) #! Do not use this line, only for testing
-        # In production, query for now, but later synchroniser should store this.
+        id = get_id_from_mapping_file(filename)
         if filename.startswith('S5'):
             metadata = get_metadata_from_netcdf(filepath)
         elif filename.startswith('S3'):
@@ -790,6 +813,7 @@ def main(filename, global_attributes_config, platform_metadata_config, product_m
             print('MMD can not be created for', filepath)
             sys.exit()
         if check_metadata(metadata,id) == False:
+            # In production, query for now, but later synchroniser should store this.
             metadata, id = get_metadata_from_opensearch(basename)
             metadata['polygon'] = extract_coordinates(metadata['gmlgeometry'])
             (
