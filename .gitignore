@@ -1,3 +1,4 @@
+jobs/logs/*
 *.xml
 source_files/*
 *.ini
