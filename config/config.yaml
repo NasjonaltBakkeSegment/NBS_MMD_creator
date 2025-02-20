@@ -1,9 +1,9 @@
 paths:
-    input_root_dir: "/lustre/storeB/project/ESAcolhub/production-backend-AOI/S3/all"
-    output_root_dir: "/lustre/storeB/project/NBS2/sentinel/production/NorwAREA/netCDFNBS/S3A"
-    python_script: "/home/lukem/Documents/MET/Projects/ESA_NBS/Git_repos/NBS_MMD_creator/create_mmd.py"
-    yaml_file: "/home/lukem/Documents/MET/Projects/ESA_NBS/Git_repos/NBS_MMD_creator/config/global_attributes.yaml"
+    input_root_dir:
+    output_root_dir:
+    python_script:
+    yaml_file:
 
 repos:
-    sentinel_parent_id_generator: "/home/lukem/Documents/MET/Projects/ESA_NBS/Git_repos/sentinel_parent_id_generator"
-    virtual_parent_mmd: "/home/lukem/Documents/MET/Projects/ESA_NBS/Git_repos/virtual_parent_mmd"
+    sentinel_parent_id_generator:
+    virtual_parent_mmd:
