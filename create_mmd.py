@@ -160,7 +160,6 @@ def within_sios(coord_strings=None,north=None,south=None,east=None,west=None):
 
     return False  # Default return if neither condition is met
 
-
 def get_collection_from_filename(filename):
     if filename.startswith('S1'):
         return 'Sentinel1'
@@ -705,8 +704,12 @@ def create_xml(metadata, id, global_attributes, platform_metadata, product_metad
     platform = ET.SubElement(root, prepend_mmd('platform'))
     platform_short_name = ET.SubElement(platform, prepend_mmd('short_name'))
     platform_long_name = ET.SubElement(platform, prepend_mmd('long_name'))
-    platform_short_name.text = filename.replace('S','Sentinel-')
-    platform_long_name.text = filename.replace('S','Sentinel-')
+    platform_short_name.text = filename_platform.replace('S','Sentinel-')
+    print(platform_short_name.text)
+    if filename.startswith('S5'):
+        platform_long_name.text = 'Sentinel-5 precursor'
+    else:
+        platform_long_name.text = platform_short_name.text
     platform_resource = ET.SubElement(platform, prepend_mmd('resource'))
 
     if 'relativeOrbitNumber' in metadata.keys():
@@ -720,20 +723,29 @@ def create_xml(metadata, id, global_attributes, platform_metadata, product_metad
         if metadata['orbitDirection'] != None:
             orbit_direction.text = metadata['orbitDirection'].lower()
 
-    instrument = ET.SubElement(platform, prepend_mmd('instrument'))
-    s_name = ET.SubElement(instrument, prepend_mmd('short_name'))
-    l_name = ET.SubElement(instrument, prepend_mmd('long_name'))
-    instrument_resource = ET.SubElement(instrument, prepend_mmd('resource'))
+    # We need to include 2 instruments for the same platform for SYN products.
+    instrument_short_names = product_metadata['instrument_short_name'].split(', ')
+    num_instruments = len(instrument_short_names)
+    for ii in range(num_instruments):
 
-    if filename_mission == 'S1' and 'sensorMode' in metadata.keys():
-        mode = ET.SubElement(instrument, prepend_mmd('mode'))
-        mode.text = metadata['sensorMode']
-        if 'polarisation' in metadata.keys():
-            polarisation = ET.SubElement(instrument, prepend_mmd('polarisation'))
-            polarisation.text = metadata['polarisation'].replace('&','+')
+        instrument = ET.SubElement(platform, prepend_mmd('instrument'))
+        s_name = ET.SubElement(instrument, prepend_mmd('short_name'))
+        l_name = ET.SubElement(instrument, prepend_mmd('long_name'))
+        instrument_resource = ET.SubElement(instrument, prepend_mmd('resource'))
 
-    product_type = ET.SubElement(instrument, prepend_mmd('product_type'))
-    product_type.text = product_metadata['product_type']
+        s_name.text = product_metadata['instrument_short_name'].split(', ')[ii]
+        l_name.text = product_metadata['instrument_long_name'].split(', ')[ii]
+        instrument_resource.text = product_metadata['instrument_vocabulary'].split(', ')[ii]
+
+        if filename_mission == 'S1' and 'sensorMode' in metadata.keys():
+            mode = ET.SubElement(instrument, prepend_mmd('mode'))
+            mode.text = metadata['sensorMode']
+            if 'polarisation' in metadata.keys():
+                polarisation = ET.SubElement(instrument, prepend_mmd('polarisation'))
+                polarisation.text = metadata['polarisation'].replace('&','+')
+
+        product_type = ET.SubElement(instrument, prepend_mmd('product_type'))
+        product_type.text = product_metadata['product_type']
 
     ancillary = ET.SubElement(platform, prepend_mmd('ancillary'))
     if 'cloudCovered' in metadata.keys():
@@ -757,8 +769,7 @@ def create_xml(metadata, id, global_attributes, platform_metadata, product_metad
     related_desc = ET.SubElement(related_information, prepend_mmd('description'))
     related_res = ET.SubElement(related_information, prepend_mmd('resource'))
 
-    l_name.text = s_name.text = product_metadata['instrument']
-    instrument_resource.text = product_metadata['instrument_vocabulary']
+
     platform_resource.text = platform_metadata[filename_platform]['platform_vocabulary']
     related_type.text = platform_metadata[filename_platform]['related_information_type']
     related_desc.text = platform_metadata[filename_platform]['related_information_description']

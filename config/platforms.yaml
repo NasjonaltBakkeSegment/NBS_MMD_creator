@@ -1,24 +1,28 @@
 S1A:
   platform: 'Sentinel-1A'
   platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_1a'
+  platform_gcmd: 'GCMDSK:Platforms > Space-based Platforms > Earth Observation Satellites > Sentinel-1 > Sentinel-1A'
   related_information_type: 'Users guide'
   related_information_description: 'URI to a users guide or product manual for the dataset.'
   related_information_resource: 'https://sentinel.esa.int/web/sentinel/missions/sentinel-1'
 S1B:
   platform: 'Sentinel-1B'
   platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_1b'
+  platform_gcmd: 'GCMDSK:Platforms > Space-based Platforms > Earth Observation Satellites > Sentinel-1 > Sentinel-1B'
   related_information_type: 'Users guide'
   related_information_description: 'URI to a users guide or product manual for the dataset.'
   related_information_resource: 'https://sentinel.esa.int/web/sentinel/missions/sentinel-1'
 S1C:
   platform: 'Sentinel-1C'
   platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_1c'
+  platform_gcmd: 'GCMDSK:Platforms > Space-based Platforms > Earth Observation Satellites > Sentinel-1 > Sentinel-1C'
   related_information_type: 'Users guide'
   related_information_description: 'URI to a users guide or product manual for the dataset.'
   related_information_resource: 'https://sentinel.esa.int/web/sentinel/missions/sentinel-1'
 S1D:
   platform: 'Sentinel-1D'
   platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_1d'
+  platform_gcmd: ''
   related_information_type: 'Users guide'
   related_information_description: 'URI to a users guide or product manual for the dataset.'
   related_information_resource: 'https://sentinel.esa.int/web/sentinel/missions/sentinel-1'
@@ -29,21 +33,25 @@ S2A:
   related_information_resource: 'https://sentinel.esa.int/web/sentinel/missions/sentinel-2'
   platform: 'Sentinel-2A'
   platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_2a'
+  platform_gcmd: 'GCMDSK:Platforms > Space-based Platforms > Earth Observation Satellites > Sentinel-2 > Sentinel-2A'
 S2B:
   platform: 'Sentinel-2B'
   platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_2b'
+  platform_gcmd: 'GCMDSK:Platforms > Space-based Platforms > Earth Observation Satellites > Sentinel-2 > Sentinel-2B'
   related_information_type: 'Users guide'
   related_information_description: 'URI to a users guide or product manual for the dataset.'
   related_information_resource: 'https://sentinel.esa.int/web/sentinel/missions/sentinel-2'
 S2C:
   platform: 'Sentinel-2C'
   platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_2c'
+  platform_gcmd: ''
   related_information_type: 'Users guide'
   related_information_description: 'URI to a users guide or product manual for the dataset.'
   related_information_resource: 'https://sentinel.esa.int/web/sentinel/missions/sentinel-2'
 S2D:
   platform: 'Sentinel-2D'
   platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_2d'
+  platform_gcmd: ''
   related_information_type: 'Users guide'
   related_information_description: 'URI to a users guide or product manual for the dataset.'
   related_information_resource: 'https://sentinel.esa.int/web/sentinel/missions/sentinel-2'
@@ -51,24 +59,28 @@ S2D:
 S3A:
   platform: 'Sentinel-3A'
   platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_3a'
+  platform_gcmd: 'GCMDSK:Platforms > Space-based Platforms > Earth Observation Satellites > Sentinel-3 > Sentinel-3A'
   related_information_type: 'Users guide'
   related_information_description: 'URI to a users guide or product manual for the dataset.'
   related_information_resource: 'https://sentinel.esa.int/web/sentinel/missions/sentinel-3'
 S3B:
   platform: 'Sentinel-3B'
   platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_3b'
+  platform_gcmd: 'GCMDSK:Platforms > Space-based Platforms > Earth Observation Satellites > Sentinel-3 > Sentinel-3B'
   related_information_type: 'Users guide'
   related_information_description: 'URI to a users guide or product manual for the dataset.'
   related_information_resource: 'https://sentinel.esa.int/web/sentinel/missions/sentinel-3'
 S3C:
   platform: 'Sentinel-3C'
   platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_3c'
+  platform_gcmd: ''
   related_information_type: 'Users guide'
   related_information_description: 'URI to a users guide or product manual for the dataset.'
   related_information_resource: 'https://sentinel.esa.int/web/sentinel/missions/sentinel-3'
 S3D:
   platform: 'Sentinel-3D'
   platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_3d'
+  platform_gcmd: ''
   related_information_type: 'Users guide'
   related_information_description: 'URI to a users guide or product manual for the dataset.'
   related_information_resource: 'https://sentinel.esa.int/web/sentinel/missions/sentinel-3'
@@ -76,6 +88,7 @@ S3D:
 S5P:
   platform: 'Sentinel-5P'
   platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_5p'
+  platform_gcmd: 'GCMDSK:Platforms > Space-based Platforms > Earth Observation Satellites > Sentinel-5 > Sentinel-5P'
   related_information_type: 'Users guide'
   related_information_description: 'URI to a users guide or product manual for the dataset.'
   related_information_resource: 'https://sentiwiki.copernicus.eu/web/s5p-mission'
@@ -83,9 +96,13 @@ S5P:
 S6A:
   platform: 'Sentinel-6A'
   platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_6a'
+  platform_gcmd: ''
 S6B:
   platform: 'Sentinel-6B'
-  platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_6b'
+  platform_vocabulary: 'https://www.wmo-sat.info/oGeneral talk about FAIR data. 1 hour including questions
+scar/satellites/view/sentinel_6b'
+  platform_gcmd: ''
 S6C:
   platform: 'Sentinel-6C'
   platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_6c'
+  platform_gcmd: ''
