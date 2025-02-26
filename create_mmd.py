@@ -18,23 +18,27 @@ import glob
 # Get the script's directory
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
-# Construct the relative path to the config file
-config_path = os.path.join(script_dir, "config", "config.yaml")
+# # Construct the relative path to the config file
+# config_path = os.path.join(script_dir, "config", "config.yaml")
 
-# Load the filepaths from the YAML file
-with open(config_path, 'r') as file:
-    config = yaml.safe_load(file)
+# # Load the filepaths from the YAML file
+# with open(config_path, 'r') as file:
+#     config = yaml.safe_load(file)
 
-# Add the repository paths to sys.path
-repos = config.get('repos', {})
-for repo_name, repo_path in repos.items():
-    if os.path.exists(repo_path):
-        sys.path.append(repo_path)
-    else:
-        print(f"Warning: The path {repo_path} does not exist.")
+# # Add the repository paths to sys.path
+# repos = config.get('repos', {})
+# for repo_name, repo_path in repos.items():
+#     if os.path.exists(repo_path):
+#         sys.path.append(repo_path)
+#     else:
+#         print(f"Warning: The path {repo_path} does not exist.")
 
-#TODO: This needs to be configured to work for S3 and S5 once we have decided on product types
-from sentinel_parent_id_generator.generate_parent_id import generate_parent_id
+def get_parent_id(platform, product_type):
+    mapping_file = os.path.join(script_dir, "config", "parent_id_mapping.yaml")
+    with open(mapping_file, 'r') as file:
+        mapping = yaml.safe_load(file)
+    parent_id = mapping[platform][product_type]
+    return parent_id
 
 def check_metadata(metadata: dict, id: str) -> bool:
     """
@@ -500,7 +504,7 @@ def create_xml(metadata, id, global_attributes, platform_metadata, product_metad
     }
     for prefix, uri in namespaces.items():
         ET.register_namespace(prefix, uri)
-    parent_ID, parent_metadata, parent_name = generate_parent_id(filename)
+
     root = ET.Element(f'{{{namespaces["mmd"]}}}mmd', nsmap=namespaces)
 
     metadata_identifier = ET.SubElement(root, prepend_mmd('metadata_identifier'))
@@ -705,7 +709,6 @@ def create_xml(metadata, id, global_attributes, platform_metadata, product_metad
     platform_short_name = ET.SubElement(platform, prepend_mmd('short_name'))
     platform_long_name = ET.SubElement(platform, prepend_mmd('long_name'))
     platform_short_name.text = filename_platform.replace('S','Sentinel-')
-    print(platform_short_name.text)
     if filename.startswith('S5'):
         platform_long_name.text = 'Sentinel-5 precursor'
     else:
@@ -769,7 +772,6 @@ def create_xml(metadata, id, global_attributes, platform_metadata, product_metad
     related_desc = ET.SubElement(related_information, prepend_mmd('description'))
     related_res = ET.SubElement(related_information, prepend_mmd('resource'))
 
-
     platform_resource.text = platform_metadata[filename_platform]['platform_vocabulary']
     related_type.text = platform_metadata[filename_platform]['related_information_type']
     related_desc.text = platform_metadata[filename_platform]['related_information_description']
@@ -787,6 +789,7 @@ def create_xml(metadata, id, global_attributes, platform_metadata, product_metad
     da_resource = ET.SubElement(data_access,prepend_mmd('resource'))
     da_resource.text = f"https://colhub-archive.met.no/odata/v1/Products('{id}')/$value"
 
+    parent_ID = get_parent_id(filename_platform, product_metadata['product_type'])
     related_dataset = ET.SubElement(root,prepend_mmd('related_dataset'))
     related_dataset.attrib['relation_type'] = "parent"
     related_dataset.text = str(parent_ID)
