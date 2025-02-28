@@ -842,8 +842,6 @@ def main(filename, global_attributes_config, platform_metadata_config, product_m
         else:
             print('MMD can not be created for', filepath)
             sys.exit()
-        for key, val in metadata.items():
-            print(key, val)
         if check_metadata(metadata,id) == False:
             print('Insufficient metadata, so querying')
             # In production, query for now, but later synchroniser should store this.
