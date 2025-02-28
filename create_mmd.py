@@ -14,6 +14,7 @@ import uuid
 import pandas as pd
 import json
 import glob
+import numpy as np
 
 # Get the script's directory
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -350,10 +351,14 @@ def get_metadata_from_sen3(sen3_file):
                     metadata['cloudCover'] = cloud_cover_element[0].get('percentage').lower()
 
     return metadata
+
 def get_metadata_from_netcdf(netcdf_file):
 
     with h5py.File(netcdf_file, "r") as f:
         global_attrs = dict(f.attrs)
+
+    for attr, val in global_attrs.items():
+        print(attr, val, type(val))
 
     mapping = {
         'startDate': 'time_coverage_start',
@@ -369,7 +374,12 @@ def get_metadata_from_netcdf(netcdf_file):
 
     for key, val in mapping.items():
         if val in global_attrs.keys():
-            metadata[key] = global_attrs[val]
+            if isinstance(global_attrs[val], (list, np.ndarray)):
+                metadata[key] = global_attrs[val][0]
+            elif isinstance(global_attrs[val], np.bytes_):
+                metadata[key] = global_attrs[val].decode("utf-8")
+            else:
+                metadata[key] = global_attrs[val]
         else:
             pass
 
@@ -808,7 +818,7 @@ def get_id_from_mapping_file(filename):
         match = pattern.search(filename)
         year = str(match.group(1))
         mission = get_collection_from_filename(filename).replace('Sentinel','Sentinel-')
-        filename_pattern = f"list_products_on_colhub_archive/data/{mission}_{year}0101-{year}*mapping"
+        filename_pattern = os.path.join(script_dir, f"mapping/{mission}_{year}0101-{year}*mapping*")
         matching_files = sorted(glob.glob(filename_pattern))
         mapping_file = matching_files[-1]
 
@@ -832,7 +842,10 @@ def main(filename, global_attributes_config, platform_metadata_config, product_m
         else:
             print('MMD can not be created for', filepath)
             sys.exit()
+        for key, val in metadata.items():
+            print(key, val)
         if check_metadata(metadata,id) == False:
+            print('Insufficient metadata, so querying')
             # In production, query for now, but later synchroniser should store this.
             metadata, id = get_metadata_from_opensearch(basename)
             metadata['polygon'] = extract_coordinates(metadata['gmlgeometry'])
