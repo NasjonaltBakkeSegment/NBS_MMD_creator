@@ -814,7 +814,7 @@ def get_id_from_mapping_file(filename):
         pattern = re.compile(r"(\d{4})")
         match = pattern.search(filename)
         year = str(match.group(1))
-        mission = get_collection_from_filename(filename).replace('Sentinel','Sentinel-')
+        mission = get_collection_from_filename(filename).replace('Sentinel','Sentinel-').replace('Sentinel-5P','Sentinel-5')
         filename_pattern = os.path.join(script_dir, f"mapping/{mission}_{year}0101-{year}*mapping*")
         matching_files = sorted(glob.glob(filename_pattern))
         mapping_file = matching_files[-1]
