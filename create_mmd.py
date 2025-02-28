@@ -357,9 +357,6 @@ def get_metadata_from_netcdf(netcdf_file):
     with h5py.File(netcdf_file, "r") as f:
         global_attrs = dict(f.attrs)
 
-    for attr, val in global_attrs.items():
-        print(attr, val, type(val))
-
     mapping = {
         'startDate': 'time_coverage_start',
         'completionDate': 'time_coverage_end',
