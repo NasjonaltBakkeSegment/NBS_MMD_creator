@@ -1,8 +1,10 @@
+metadata_files/*
 jobs/*
 jobs/logs/*
 *.xml
 source_files/*
 *.ini
+*.json
 mapping/*
 config/config.yaml
 

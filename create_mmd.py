@@ -382,6 +382,40 @@ def get_metadata_from_netcdf(netcdf_file):
 
     return metadata
 
+def get_metadata_from_json(json_file):
+    with open(json_file, encoding="utf-8") as file:
+        metadata = json.load(file)
+
+    id = metadata.get('uuid')
+
+    for key in [
+        'orbitNumber',
+        'orbitDirection',
+        'productLevel',
+        'relativeOrbitNumber',
+        'productType',
+        'platformName'
+    ]:
+        lower_key = key.lower()
+        if lower_key in metadata:
+            metadata[key] = metadata[lower_key]
+
+    if 'beginposition' in metadata:
+        metadata['startDate'] = metadata['beginposition']
+    if 'endposition' in metadata:
+        metadata['completionDate'] = metadata['endposition']
+
+    metadata['polygon'] = extract_coordinates(metadata['gmlfootprint'])
+    (
+        metadata['north'],
+        metadata['south'],
+        metadata['east'],
+        metadata['west'],
+        metadata['coords']
+    ) = get_bounding_box(metadata['polygon'])
+
+    return id, metadata
+
 def get_metadata_from_opensearch(filename):
 
     collection = get_collection_from_filename(filename)
@@ -397,6 +431,7 @@ def get_metadata_from_opensearch(filename):
 
     if response.status_code == 200:
         data = response.json()
+
         #print(f"API Response: {data}")  # Debug statement to inspect API response
         if 'features' in data and data['features']:
             return data['features'][0]['properties'], data['features'][0]['id']
@@ -501,7 +536,6 @@ def create_xml(metadata, id, global_attributes, platform_metadata, product_metad
         filename_product_type = filename[9:19]
     else:
         raise ValueError(f'Could not identify product type from filename')
-
     product_metadata = get_product_metadata(product_metadata_df,filename_product_type)
 
     # TODO: The SAFE filepath will later be predictable so use this predictable filepath instead of passing an argument
@@ -686,7 +720,10 @@ def create_xml(metadata, id, global_attributes, platform_metadata, product_metad
         file_format.text = 'NetCDF'
     file_size = ET.SubElement(storage_information, prepend_mmd('file_size'))
     file_size.attrib['unit'] = 'MB'
-    file_size_conv = get_size_mb(filepath)
+    if 'size' not in metadata:
+        file_size_conv = get_size_mb(filepath)
+    else:
+        file_size_conv = float(metadata['size'].split(' ')[0])
     file_size.text = f'{file_size_conv:.2f}'
 
     # Compute checksum for file
@@ -826,19 +863,22 @@ def get_id_from_mapping_file(filename):
     except:
         return None
 
-def main(filename, global_attributes_config, platform_metadata_config, product_metadata_csv, output_path, overwrite, filepath):
+def main(filename, global_attributes_config, platform_metadata_config, product_metadata_csv, output_path, overwrite, filepath, json_file):
     basename = filename.split('.')[0]
     try:
-        id = get_id_from_mapping_file(filename)
-        if filename.startswith('S5'):
-            metadata = get_metadata_from_netcdf(filepath)
-        elif filename.startswith('S3'):
-            metadata = get_metadata_from_sen3(filepath)
-        elif filename[0:2] in ['S1','S2']:
-            metadata = get_metadata_from_safe(filepath)
-        else:
-            print('MMD can not be created for', filepath)
-            sys.exit()
+        try:
+            id, metadata = get_metadata_from_json(json_file)
+        except:
+            id = get_id_from_mapping_file(filename)
+            if filename.startswith('S5'):
+                metadata = get_metadata_from_netcdf(filepath)
+            elif filename.startswith('S3'):
+                metadata = get_metadata_from_sen3(filepath)
+            elif filename[0:2] in ['S1','S2']:
+                metadata = get_metadata_from_safe(filepath)
+            else:
+                print('MMD can not be created for', filepath)
+                sys.exit()
         if check_metadata(metadata,id) == False:
             print('Insufficient metadata, so querying')
             # In production, query for now, but later synchroniser should store this.
@@ -906,6 +946,10 @@ if __name__ == "__main__":
         '-f', '--filepath', type=str, required=False,
         help='Filepath to the data file, used to obtain orbit direction. Will become deprecated once predictable.'
     )
+    parser.add_argument(
+        '-j', '--json_metadata_filepath', type=str, required=False,
+        help='Filepath to a json file include metadata from an early opensearch query'
+    )
 
     args = parser.parse_args()
 
@@ -913,4 +957,4 @@ if __name__ == "__main__":
         print(f'Output path is a directory, not a file: {args.mmd_path}')
         sys.exit(1)
 
-    main(args.product, args.global_attributes_config, args.platform_metadata_config, args.product_metadata_csv, args.mmd_path, args.overwrite, args.filepath)
+    main(args.product, args.global_attributes_config, args.platform_metadata_config, args.product_metadata_csv, args.mmd_path, args.overwrite, args.filepath, args.json_metadata_filepath)
