@@ -863,22 +863,26 @@ def get_id_from_mapping_file(filename):
     except:
         return None
 
-def main(filename, global_attributes_config, platform_metadata_config, product_metadata_csv, output_path, overwrite, filepath, json_file):
+def main(filename, global_attributes_config, platform_metadata_config, product_metadata_csv, output_path, overwrite, filepath, json_file=None):
     basename = filename.split('.')[0]
     try:
-        try:
+        if os.path.exists(json_file):
             id, metadata = get_metadata_from_json(json_file)
-        except:
-            id = get_id_from_mapping_file(filename)
-            if filename.startswith('S5'):
-                metadata = get_metadata_from_netcdf(filepath)
-            elif filename.startswith('S3'):
-                metadata = get_metadata_from_sen3(filepath)
-            elif filename[0:2] in ['S1','S2']:
-                metadata = get_metadata_from_safe(filepath)
-            else:
-                print('MMD can not be created for', filepath)
-                sys.exit()
+        else:
+            raise FileNotFoundError  # Forces fallback logic
+    except Exception as e:  # Catch specific exceptions if needed
+        print(f"Warning: Using fallback metadata extraction. Reason: {e}")
+        id = get_id_from_mapping_file(filename)
+
+        if filename.startswith('S5'):
+            metadata = get_metadata_from_netcdf(filepath)
+        elif filename.startswith('S3'):
+            metadata = get_metadata_from_sen3(filepath)
+        elif filename[:2] in ['S1', 'S2']:
+            metadata = get_metadata_from_safe(filepath)
+        else:
+            metadata = {}
+            id = None
         if check_metadata(metadata,id) == False:
             print('Insufficient metadata, so querying')
             # In production, query for now, but later synchroniser should store this.
