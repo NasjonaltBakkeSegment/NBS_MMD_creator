@@ -883,42 +883,42 @@ def main(filename, global_attributes_config, platform_metadata_config, product_m
         else:
             metadata = {}
             id = None
-        if check_metadata(metadata,id) == False:
-            print('Insufficient metadata, so querying')
-            # In production, query for now, but later synchroniser should store this.
-            metadata, id = get_metadata_from_opensearch(basename)
-            metadata['polygon'] = extract_coordinates(metadata['gmlgeometry'])
-            (
-                metadata['north'],
-                metadata['south'],
-                metadata['east'],
-                metadata['west'],
-                metadata['coords']
-            ) = get_bounding_box(metadata['polygon'])
-        else:
-            pass
-        global_attributes = load_config(global_attributes_config)
-        platform_metadata = load_config(platform_metadata_config)
-        product_metadata_df = pd.read_csv(product_metadata_csv)
+    if check_metadata(metadata,id) == False:
+        print('Insufficient metadata, so querying')
+        # In production, query for now, but later synchroniser should store this.
+        metadata, id = get_metadata_from_opensearch(basename)
+        metadata['polygon'] = extract_coordinates(metadata['gmlgeometry'])
+        (
+            metadata['north'],
+            metadata['south'],
+            metadata['east'],
+            metadata['west'],
+            metadata['coords']
+        ) = get_bounding_box(metadata['polygon'])
+    else:
+        pass
+    global_attributes = load_config(global_attributes_config)
+    platform_metadata = load_config(platform_metadata_config)
+    product_metadata_df = pd.read_csv(product_metadata_csv)
 
-        if os.path.exists(output_path):
-            try:
-                myxml = ET.parse(output_path)
-                myroot = myxml.getroot()
-                existing_elem = myroot.find("related_dataset")
-                if existing_elem is not None and not overwrite:
-                    print(f'Already specified, not changing anything in {output_path}')
-                    sys.exit()
-            except ET.ParseError:
-                print(f"Couldn't parse existing file: {output_path}")
+    # if os.path.exists(output_path):
+    #     try:
+    #         myxml = ET.parse(output_path)
+    #         myroot = myxml.getroot()
+    #         existing_elem = myroot.find("related_dataset")
+    #         if existing_elem is not None and not overwrite:
+    #             print(f'Already specified, not changing anything in {output_path}')
+    #             sys.exit()
+    #     except ET.ParseError:
+    #         print(f"Couldn't parse existing file: {output_path}")
 
-        mmd_xml = create_xml(metadata, id, global_attributes, platform_metadata, product_metadata_df, filename, filepath)
-        save_xml_to_file(mmd_xml, output_path)
-        print(f'Metadata XML file saved to {output_path}')
-    except requests.exceptions.RequestException as e:
-        print(f'Network error occurred: {e}')
-    except Exception as e:
-        print(f'An error occurred: {e}')
+    mmd_xml = create_xml(metadata, id, global_attributes, platform_metadata, product_metadata_df, filename, filepath)
+    save_xml_to_file(mmd_xml, output_path)
+    print(f'Metadata XML file saved to {output_path}')
+    # except requests.exceptions.RequestException as e:
+    #     print(f'Network error occurred: {e}')
+    # except Exception as e:
+    #     print(f'An error occurred: {e}')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Generate an MMD file from Copernicus metadata.')
