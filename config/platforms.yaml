@@ -99,8 +99,7 @@ S6A:
   platform_gcmd: ''
 S6B:
   platform: 'Sentinel-6B'
-  platform_vocabulary: 'https://www.wmo-sat.info/oGeneral talk about FAIR data. 1 hour including questions
-scar/satellites/view/sentinel_6b'
+  platform_vocabulary: 'https://www.wmo-sat.info/oscar/satellites/view/sentinel_6b'
   platform_gcmd: ''
 S6C:
   platform: 'Sentinel-6C'

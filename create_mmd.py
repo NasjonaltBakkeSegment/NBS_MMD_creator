@@ -235,13 +235,6 @@ def get_metadata_from_safe(zip_file):
                     # coordinates in S2 are space separated, e.g. lat lon lat lon lat lon
                     metadata['polygon'] = metadata['polygon'].replace(',', ' ')
 
-                    # Polygon in SAFE file is lat,lon lat,lon etc...
-                    # But polygon through OpenSearch is lon,lat lon,lat etc...
-                    # So need to flip the coordinates round here to be consistent since this program supports retrieves pulling metadata from either OpenSearch or the file.
-                    coords = list(map(float, metadata['polygon'].split()))
-                    flipped_coords = [f"{lat} {lon}" for lon, lat in zip(coords[0::2], coords[1::2])]
-                    metadata['polygon'] = " ".join(flipped_coords)
-
                     try:
                         (
                             metadata['north'],
@@ -334,7 +327,9 @@ def get_metadata_from_sen3(sen3_file):
                     # So need to flip the coordinates round here to be consistent since this program supports retrieves pulling metadata from either OpenSearch or the file.
                     coords = list(map(float, metadata['polygon'].split()))
                     flipped_coords = [f"{lat} {lon}" for lon, lat in zip(coords[0::2], coords[1::2])]
-                    metadata['polygon'] = " ".join(flipped_coords)
+                    coords = flipped_coords = [f"{lon} {lat}" for lon, lat in zip(coords[0::2], coords[1::2])]
+                    #metadata['polygon'] = " ".join(flipped_coords)
+                    metadata['polygon'] = " ".join(coords)
                     try:
                         (
                             metadata['north'],
@@ -406,6 +401,7 @@ def get_metadata_from_json(json_file):
         metadata['completionDate'] = metadata['endposition']
 
     metadata['polygon'] = extract_coordinates(metadata['gmlfootprint'])
+
     (
         metadata['north'],
         metadata['south'],
@@ -485,9 +481,9 @@ def get_bounding_box(polygon):
     polygon = polygon.replace(',', ' ')
     coords = re.findall(r'\S+\s+\S+', polygon)
 
-    lon_lat_pairs = [tuple(map(float, coord.split())) for coord in coords]
+    lat_lon_pairs = [tuple(map(float, coord.split())) for coord in coords]
 
-    lons, lats = zip(*lon_lat_pairs)
+    lats, lons = zip(*lat_lon_pairs)
 
     north = max(lats)
     south = min(lats)
@@ -867,6 +863,7 @@ def main(filename, global_attributes_config, platform_metadata_config, product_m
     basename = filename.split('.')[0]
     try:
         if os.path.exists(json_file):
+            print('Extracting metadata from JSON file')
             id, metadata = get_metadata_from_json(json_file)
         else:
             raise FileNotFoundError  # Forces fallback logic
@@ -875,19 +872,24 @@ def main(filename, global_attributes_config, platform_metadata_config, product_m
         id = get_id_from_mapping_file(filename)
 
         if filename.startswith('S5'):
+            print('Extracting metadata from netCDF file')
             metadata = get_metadata_from_netcdf(filepath)
         elif filename.startswith('S3'):
+            print('Extracting metadata from SEN3 file')
             metadata = get_metadata_from_sen3(filepath)
         elif filename[:2] in ['S1', 'S2']:
+            print('Extracting metadata from SAFE file')
             metadata = get_metadata_from_safe(filepath)
         else:
             metadata = {}
             id = None
     if check_metadata(metadata,id) == False:
         print('Insufficient metadata, so querying')
-        # In production, query for now, but later synchroniser should store this.
+        # In production, query for now in some cases, but later synchroniser should store this so this code should become redundant.
         metadata, id = get_metadata_from_opensearch(basename)
         metadata['polygon'] = extract_coordinates(metadata['gmlgeometry'])
+        s = metadata['polygon']
+        metadata['polygon']  = " ".join(",".join(pair.split(",")[::-1]) for pair in s.split())
         (
             metadata['north'],
             metadata['south'],
@@ -897,28 +899,14 @@ def main(filename, global_attributes_config, platform_metadata_config, product_m
         ) = get_bounding_box(metadata['polygon'])
     else:
         pass
+
     global_attributes = load_config(global_attributes_config)
     platform_metadata = load_config(platform_metadata_config)
     product_metadata_df = pd.read_csv(product_metadata_csv)
 
-    # if os.path.exists(output_path):
-    #     try:
-    #         myxml = ET.parse(output_path)
-    #         myroot = myxml.getroot()
-    #         existing_elem = myroot.find("related_dataset")
-    #         if existing_elem is not None and not overwrite:
-    #             print(f'Already specified, not changing anything in {output_path}')
-    #             sys.exit()
-    #     except ET.ParseError:
-    #         print(f"Couldn't parse existing file: {output_path}")
-
     mmd_xml = create_xml(metadata, id, global_attributes, platform_metadata, product_metadata_df, filename, filepath)
     save_xml_to_file(mmd_xml, output_path)
     print(f'Metadata XML file saved to {output_path}')
-    # except requests.exceptions.RequestException as e:
-    #     print(f'Network error occurred: {e}')
-    # except Exception as e:
-    #     print(f'An error occurred: {e}')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Generate an MMD file from Copernicus metadata.')
