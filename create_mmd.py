@@ -859,7 +859,7 @@ def get_id_from_mapping_file(filename):
     except:
         return None
 
-def main(filename, global_attributes_config, platform_metadata_config, product_metadata_csv, output_path, overwrite, filepath, json_file=None):
+def generate_mmd(filename, global_attributes_config, platform_metadata_config, product_metadata_csv, output_path, overwrite, filepath, json_file=None):
     basename = filename.split('.')[0]
     try:
         if os.path.exists(json_file):
@@ -949,4 +949,4 @@ if __name__ == "__main__":
         print(f'Output path is a directory, not a file: {args.mmd_path}')
         sys.exit(1)
 
-    main(args.product, args.global_attributes_config, args.platform_metadata_config, args.product_metadata_csv, args.mmd_path, args.overwrite, args.filepath, args.json_metadata_filepath)
+    generate_mmd(args.product, args.global_attributes_config, args.platform_metadata_config, args.product_metadata_csv, args.mmd_path, args.overwrite, args.filepath, args.json_metadata_filepath)
