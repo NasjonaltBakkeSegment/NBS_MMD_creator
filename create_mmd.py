@@ -34,6 +34,35 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 #     else:
 #         print(f"Warning: The path {repo_path} does not exist.")
 
+def generate_http_url(filename, product_type):
+
+    root_path = "https://nbstds.met.no/thredds/fileServer/nbsArchive/"
+    platform = filename.split('_')[0]
+    mission = filename[0:2]
+
+    if mission == 'S1':
+        date = filename[17:25]
+        mode = filename[4:6]
+    elif mission == 'S2':
+        date = filename[11:19]
+    elif mission == 'S3':
+        date = filename[16:24]
+    elif mission == 'S5':
+        date = filename[20:28]
+
+    year = date[:4]
+    month = date[4:6]
+    day = date[6:]
+
+    if mission in ['S3', 'S5']:
+        url = f'{root_path}{platform}/{year}/{month}/{day}/{product_type}/{filename}'
+    elif mission == 'S1':
+        url = f'{root_path}{platform}/{year}/{month}/{day}/{mode}/{filename}'
+    elif mission == 'S2':
+        url = f'{root_path}{platform}/{year}/{month}/{day}/{filename}'
+
+    return url
+
 def get_parent_id(platform, product_type):
     mapping_file = os.path.join(script_dir, "config", "parent_id_mapping.yaml")
     with open(mapping_file, 'r') as file:
@@ -823,11 +852,11 @@ def create_xml(metadata, id, global_attributes, platform_metadata, product_metad
 
     data_access = ET.SubElement(root,prepend_mmd('data_access'))
     da_type = ET.SubElement(data_access, prepend_mmd('type'))
-    da_type.text = 'ODATA'
+    da_type.text = 'HTTP'
     da_description = ET.SubElement(data_access,prepend_mmd('description'))
-    da_description.text = 'Open Data Protocol.'
+    da_description.text = 'Direct access to the full data file.'
     da_resource = ET.SubElement(data_access,prepend_mmd('resource'))
-    da_resource.text = f"https://colhub-archive.met.no/odata/v1/Products('{id}')/$value"
+    da_resource.text = generate_http_url(filename,product_metadata['product_type'])
 
     parent_ID = get_parent_id(filename_platform, product_metadata['product_type'])
     related_dataset = ET.SubElement(root,prepend_mmd('related_dataset'))
