@@ -905,19 +905,24 @@ def generate_mmd(filename, global_attributes_config, platform_metadata_config, p
         else:
             raise FileNotFoundError  # Forces fallback logic
     except Exception as e:  # Catch specific exceptions if needed
-        print(f"Warning: Using fallback metadata extraction. Reason: {e}")
-        id = get_id_from_mapping_file(filename)
+        print(f"Warning: Couldn't extract metadata from JSON file. Reason: {e}")
+        try:
+            id = get_id_from_mapping_file(filename)
 
-        if filename.startswith('S5'):
-            print('Extracting metadata from netCDF file')
-            metadata = get_metadata_from_netcdf(filepath)
-        elif filename.startswith('S3'):
-            print('Extracting metadata from SEN3 file')
-            metadata = get_metadata_from_sen3(filepath)
-        elif filename[:2] in ['S1', 'S2']:
-            print('Extracting metadata from SAFE file')
-            metadata = get_metadata_from_safe(filepath)
-        else:
+            if filename.startswith('S5'):
+                print('Extracting metadata from netCDF file')
+                metadata = get_metadata_from_netcdf(filepath)
+            elif filename.startswith('S3'):
+                print('Extracting metadata from SEN3 file')
+                metadata = get_metadata_from_sen3(filepath)
+            elif filename[:2] in ['S1', 'S2']:
+                print('Extracting metadata from SAFE file')
+                metadata = get_metadata_from_safe(filepath)
+            else:
+                metadata = {}
+                id = None
+        except Exception as e:
+            print(f"Error: Couldn't extract metadata from source file. Reason: {e}")
             metadata = {}
             id = None
     if check_metadata(metadata,id) == False:
