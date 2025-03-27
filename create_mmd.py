@@ -858,14 +858,6 @@ def create_xml(metadata, id, global_attributes, platform_metadata, product_metad
     da_resource = ET.SubElement(data_access,prepend_mmd('resource'))
     da_resource.text = generate_http_url(filename,product_metadata['product_type'])
 
-    data_access = ET.SubElement(root,prepend_mmd('data_access'))
-    da_type = ET.SubElement(data_access, prepend_mmd('type'))
-    da_type.text = 'ODATA'
-    da_description = ET.SubElement(data_access,prepend_mmd('description'))
-    da_description.text = 'Open Data Protocol.'
-    da_resource = ET.SubElement(data_access,prepend_mmd('resource'))
-    da_resource.text = f"https://colhub-archive.met.no/odata/v1/Products('{id}')/$value"
-
     parent_ID = get_parent_id(filename_platform, product_metadata['product_type'])
     related_dataset = ET.SubElement(root,prepend_mmd('related_dataset'))
     related_dataset.attrib['relation_type'] = "parent"
