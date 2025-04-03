@@ -34,7 +34,9 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 #     else:
 #         print(f"Warning: The path {repo_path} does not exist.")
 
-def generate_http_url(filename, product_type):
+def generate_http_url(filepath, product_type):
+
+    filename = os.path.basename(filepath)
 
     root_path = "https://nbstds.met.no/thredds/fileServer/nbsArchive/"
     platform = filename.split('_')[0]
