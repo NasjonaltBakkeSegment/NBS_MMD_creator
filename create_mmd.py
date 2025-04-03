@@ -856,7 +856,7 @@ def create_xml(metadata, id, global_attributes, platform_metadata, product_metad
     da_description = ET.SubElement(data_access,prepend_mmd('description'))
     da_description.text = 'Direct access to the full data file.'
     da_resource = ET.SubElement(data_access,prepend_mmd('resource'))
-    da_resource.text = generate_http_url(filename,product_metadata['product_type'])
+    da_resource.text = generate_http_url(filepath,product_metadata['product_type'])
 
     parent_ID = get_parent_id(filename_platform, product_metadata['product_type'])
     related_dataset = ET.SubElement(root,prepend_mmd('related_dataset'))
