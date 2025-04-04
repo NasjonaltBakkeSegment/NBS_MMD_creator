@@ -155,46 +155,46 @@ def within_sios(coord_strings=None,north=None,south=None,east=None,west=None):
 
     if coord_strings:
         # Try to convert directly, and fall back to regex extraction if needed
-        try:
-            # Attempt to parse coordinates directly from coord_strings
-            linear_ring_coords = [tuple(map(float, coord.split())) for coord in coord_strings]
+    #    try:
+        # Attempt to parse coordinates directly from coord_strings
+        linear_ring_coords = [tuple(map(float, coord.split())) for coord in coord_strings]
 
-            # Create a Shapely LinearRing from the coordinates
-            linear_ring = LinearRing(linear_ring_coords)
+        # Create a Shapely LinearRing from the coordinates
+        linear_ring = LinearRing(linear_ring_coords)
 
-            # Check if the LinearRing intersects the SIOS polygon
-            return linear_ring.intersects(sios_polygon)
+        # Check if the LinearRing intersects the SIOS polygon
+        return linear_ring.intersects(sios_polygon)
 
-        except ValueError:
-            # If a ValueError occurs (e.g., invalid format like XML/GML), fallback to regex method
-            linear_ring_coords = []
+    #     except ValueError:
+    #         # If a ValueError occurs (e.g., invalid format like XML/GML), fallback to regex method
+    #         linear_ring_coords = []
 
-            # Regular expression to match coordinates (e.g., -8.766348 57.313187)
-            coord_pattern = re.compile(r"(-?\d+\.\d+) (-?\d+\.\d+)")
+    #         # Regular expression to match coordinates (e.g., -8.766348 57.313187)
+    #         coord_pattern = re.compile(r"(-?\d+\.\d+) (-?\d+\.\d+)")
 
-            # Loop through each coordinate string
-            for coord_string in coord_strings:
-                # Find all coordinate pairs in the string using regex
-                matches = coord_pattern.findall(coord_string)
+    #         # Loop through each coordinate string
+    #         for coord_string in coord_strings:
+    #             # Find all coordinate pairs in the string using regex
+    #             matches = coord_pattern.findall(coord_string)
 
-                # Convert matched coordinates to tuples of floats and add to the list
-                for match in matches:
-                    linear_ring_coords.append((float(match[0]), float(match[1])))
+    #             # Convert matched coordinates to tuples of floats and add to the list
+    #             for match in matches:
+    #                 linear_ring_coords.append((float(match[0]), float(match[1])))
 
-            # Create a Shapely LinearRing from the coordinates
-            linear_ring = LinearRing(linear_ring_coords)
+    #         # Create a Shapely LinearRing from the coordinates
+    #         linear_ring = LinearRing(linear_ring_coords)
 
-            # Check if the LinearRing intersects the SIOS polygon
-            return linear_ring.intersects(sios_polygon)
+    #         # Check if the LinearRing intersects the SIOS polygon
+    #         return linear_ring.intersects(sios_polygon)
 
-    elif north is not None and south is not None and east is not None and west is not None:
-        # Create a bounding box Polygon
-        bbox = box(west, south, east, north)
+    # elif north is not None and south is not None and east is not None and west is not None:
+    #     # Create a bounding box Polygon
+    #     bbox = box(west, south, east, north)
 
-        # Check if the bounding box intersects the SIOS polygon
-        return bbox.intersects(sios_polygon)
+    #     # Check if the bounding box intersects the SIOS polygon
+    #     return bbox.intersects(sios_polygon)
 
-    return False  # Default return if neither condition is met
+    # return False  # Default return if neither condition is met
 
 def get_collection_from_filename(filename):
     if filename.startswith('S1'):
@@ -264,7 +264,14 @@ def get_metadata_from_safe(zip_file):
                     metadata['polygon'] = gml_element[0].text
                     # coordinates in S1 are comma separated, e.g. lat,lon lat,lon lat,lon
                     # coordinates in S2 are space separated, e.g. lat lon lat lon lat lon
-                    metadata['polygon'] = metadata['polygon'].replace(',', ' ')
+                    # Need to flip to lon lat lon lat...
+                    if base.startswith('S1'):
+                        s = metadata['polygon']
+                        metadata['polygon']  = " ".join(",".join(pair.split(",")[::-1]) for pair in s.split())
+                    elif base.startswith('S2'):
+                        coords = list(map(float, metadata['polygon'].split()))
+                        switched = [coords[i + 1] if i % 2 == 0 else coords[i - 1] for i in range(len(coords))]
+                        metadata['polygon'] = ' '.join(map(str, switched))
 
                     try:
                         (
@@ -358,9 +365,9 @@ def get_metadata_from_sen3(sen3_file):
                     # So need to flip the coordinates round here to be consistent since this program supports retrieves pulling metadata from either OpenSearch or the file.
                     coords = list(map(float, metadata['polygon'].split()))
                     flipped_coords = [f"{lat} {lon}" for lon, lat in zip(coords[0::2], coords[1::2])]
-                    coords = flipped_coords = [f"{lon} {lat}" for lon, lat in zip(coords[0::2], coords[1::2])]
-                    #metadata['polygon'] = " ".join(flipped_coords)
-                    metadata['polygon'] = " ".join(coords)
+                    #coords = flipped_coords = [f"{lon} {lat}" for lon, lat in zip(coords[0::2], coords[1::2])]
+                    metadata['polygon'] = " ".join(flipped_coords)
+                    #metadata['polygon'] = " ".join(coords)
                     try:
                         (
                             metadata['north'],
@@ -432,6 +439,8 @@ def get_metadata_from_json(json_file):
         metadata['completionDate'] = metadata['endposition']
 
     metadata['polygon'] = extract_coordinates(metadata['gmlfootprint'])
+    s = metadata['polygon']
+    metadata['polygon']  = " ".join(",".join(pair.split(",")[::-1]) for pair in s.split())
 
     (
         metadata['north'],
@@ -512,9 +521,9 @@ def get_bounding_box(polygon):
     polygon = polygon.replace(',', ' ')
     coords = re.findall(r'\S+\s+\S+', polygon)
 
-    lat_lon_pairs = [tuple(map(float, coord.split())) for coord in coords]
+    lon_lat_pairs = [tuple(map(float, coord.split())) for coord in coords]
 
-    lats, lons = zip(*lat_lon_pairs)
+    lons, lats = zip(*lon_lat_pairs)
 
     north = max(lats)
     south = min(lats)
@@ -924,8 +933,9 @@ def generate_mmd(filename, global_attributes_config, platform_metadata_config, p
         # In production, query for now in some cases, but later synchroniser should store this so this code should become redundant.
         metadata, id = get_metadata_from_opensearch(basename)
         metadata['polygon'] = extract_coordinates(metadata['gmlgeometry'])
-        s = metadata['polygon']
-        metadata['polygon']  = " ".join(",".join(pair.split(",")[::-1]) for pair in s.split())
+        metadata['polygon'] = metadata['polygon'].replace(',', ' ')
+        #s = metadata['polygon']
+        #metadata['polygon']  = " ".join(",".join(pair.split(",")[::-1]) for pair in s.split())
         (
             metadata['north'],
             metadata['south'],
