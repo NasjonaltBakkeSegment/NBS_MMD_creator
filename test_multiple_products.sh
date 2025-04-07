@@ -36,5 +36,5 @@ do
 
     # Run the Python script
     echo "Processing $PRODUCT..."
-    python3 create_mmd.py -p "$PRODUCT" -g "$GLOBAL_ATTRIBUTES" -pr "$PRODUCT_METADATA" -pl "$PLATFORM_METADATA" -m "$XML_FILE" -f "$PRODUCT_FILEPATH" # -j "/home/lukem/Documents/MET/Projects/ESA_NBS/Git_repos/NBS_MMD_creator/metadata_files/S3A_SR_1_SRA____20171111T104632_20171111T105632_20171111T130410_0599_024_208______SVL_O_NR_002.json"
+    python3 create_mmd.py -p "$PRODUCT" -g "$GLOBAL_ATTRIBUTES" -pr "$PRODUCT_METADATA" -pl "$PLATFORM_METADATA" -m "$XML_FILE" -f "$PRODUCT_FILEPATH"
 done
