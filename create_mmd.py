@@ -677,7 +677,7 @@ def create_xml(metadata, id, global_attributes, platform_metadata, product_metad
             keyword_elem.text = keyword
 
         gemet_resource = ET.SubElement(gemet_elem, prepend_mmd('resource'))
-        gemet_resource.text = 'http://inspire.ec.europa.eu/theme'
+        gemet_resource.text = 'https://inspire.ec.europa.eu/theme'
 
     if {"north", "south", "east", "west"}.issubset(metadata):
         geographic_extent = ET.SubElement(root, prepend_mmd('geographic_extent'))
