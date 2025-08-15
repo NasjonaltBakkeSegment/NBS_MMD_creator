@@ -831,7 +831,7 @@ def create_xml(metadata, id, global_attributes, platform_metadata, product_metad
         product_type.text = product_metadata['product_type']
 
     ancillary = ET.SubElement(platform, prepend_mmd('ancillary'))
-    if 'cloudCovered' in metadata.keys():
+    if 'cloudCover' in metadata.keys():
         cloud_coverage = ET.SubElement(ancillary, prepend_mmd('cloud_coverage'))
         cloud_coverage.text =  str(metadata['cloudCover'])
 
