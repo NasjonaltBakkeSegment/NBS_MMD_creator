@@ -5,18 +5,17 @@ import yaml
 import glob
 from lxml import etree as ET
 from datetime import datetime 
-import pandas as pd 
-
-from utils.metadata_extraction import (get_collection_from_filename,get_product_metadata,
-                                       generate_http_url,get_metadata_from_json,
-                                       get_metadata_from_netcdf,get_metadata_from_opensearch,
-                                       get_metadata_from_safe,get_metadata_from_sen3,
-                                       check_metadata)
-from utils.xml_creation import (prepend_mmd,prepend_xml,prepend_gml)
-from utils.utils import (within_sios,get_size_mb,
-                         get_netcdf_checksum,get_bounding_box,
-                         get_zip_checksum,extract_coordinates)
-from utils.config_handling import (load_config,save_xml_to_file)
+from utils.metadata_extraction import (
+    get_collection_from_filename,
+    get_product_metadata,
+    generate_http_url
+)
+from utils.xml_creation import prepend_mmd,prepend_xml,prepend_gml
+from utils.utils import (
+    within_sios,get_size_mb,
+    get_netcdf_checksum,
+    get_zip_checksum
+)
 
 
 def get_parent_id(script_dir, platform, product_type):
@@ -364,61 +363,3 @@ def create_xml(script_dir, metadata, id, global_attributes, platform_metadata, p
     related_dataset.attrib['relation_type'] = "parent"
     related_dataset.text = str(parent_ID)
     return root
-
-
-
-def generate_mmd(script_dir, filename, global_attributes_config, platform_metadata_config, product_metadata_csv, output_path, overwrite, filepath, json_file=None):
-    basename = filename.split('.')[0]
-    try:
-        if json_file and os.path.exists(json_file):
-            print('Extracting metadata from JSON file')
-            id, metadata = get_metadata_from_json(json_file)
-        else:
-            raise FileNotFoundError  # Forces fallback logic
-    except Exception as e:
-        print(f"Warning: Couldn't extract metadata from JSON file. Reason: {e}")
-        try:
-            # Pass script_dir to get_id_from_mapping_file
-            id = get_id_from_mapping_file(script_dir, filename)
-
-            if filename.startswith("S5"):
-                print("Extracting metadata from NetCDF file")
-                metadata = get_metadata_from_netcdf(filepath)
-            elif filename.startswith("S3"):
-                print("Extracting metadata from SEN3 file")
-                metadata = get_metadata_from_sen3(filepath)
-            elif filename[:2] in ["S1", "S2"]:
-                print("Extracting metadata from SAFE file")
-                metadata = get_metadata_from_safe(filepath)
-            else:
-                metadata = {}
-                id = None
-        except Exception as e:
-            print(f"Error: Couldn't extract metadata from source file. Reason: {e}")
-            metadata = {}
-            id = None
-
-    if not check_metadata(metadata, id):
-        print("Insufficient metadata, so querying")
-        metadata, id = get_metadata_from_opensearch(basename)
-        metadata["polygon"] = extract_coordinates(metadata["gmlgeometry"])
-        metadata["polygon"] = metadata["polygon"].replace(",", " ")
-        (
-            metadata["north"],
-            metadata["south"],
-            metadata["east"],
-            metadata["west"],
-            metadata["coords"],
-        ) = get_bounding_box(metadata["polygon"])
-
-    # Load configurations
-    global_attributes = load_config(global_attributes_config)
-    platform_metadata = load_config(platform_metadata_config)
-    product_metadata_df = pd.read_csv(product_metadata_csv)
-
-    # Create XML
-    mmd_xml = create_xml(script_dir, metadata, id, global_attributes, platform_metadata, product_metadata_df, filename, filepath)
-
-    # Save XML to the output path
-    save_xml_to_file(mmd_xml, output_path)
-    print(f"MMD XML file saved to {output_path}")
