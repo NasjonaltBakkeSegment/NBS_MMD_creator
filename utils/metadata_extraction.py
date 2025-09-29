@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 #import yaml
 import uuid
+import random
+import time
 
 from utils.utils import extract_coordinates, get_bounding_box
 
@@ -359,40 +361,54 @@ def get_metadata_from_json(json_file):
 
     return id, metadata
 
-def get_metadata_from_opensearch(filename):
 
+def get_metadata_from_opensearch(filename, access_token=None, max_retries=5, base_delay=5):
+    def query_api(url, params):
+        """
+        Helper function to query the API with exponential backoff and jitter.
+        """
+        headers = {}
+        if access_token:
+            headers['Authorization'] = f'Bearer {access_token}'
+        for attempt in range(1, max_retries + 1):
+            try:
+                print(f'Attempt {attempt} of {max_retries}: Querying API...')
+                response = requests.get(url, params=params, headers=headers, timeout=15)
+                response.raise_for_status()  # Raise HTTPError for bad responses
+                return response.json()
+            except requests.exceptions.RequestException as e:
+                wait = min(base_delay * (2 ** (attempt - 1)), 300)  # cap at 5 min
+                wait = wait * (0.5 + random.random())  # add jitter
+                print(f'API request failed (attempt {attempt}): {e}')
+                if attempt < max_retries:
+                    print(f'Retrying in {wait:.1f} seconds...')
+                    time.sleep(wait)
+                else:
+                    print('All retry attempts failed.')
+                    return None
     collection = get_collection_from_filename(filename)
     base_url = f'https://catalogue.dataspace.copernicus.eu/resto/api/collections/{collection}/search.json'
-
     params = {
         'productIdentifier': filename,
         'maxRecords': 1
     }
-
-    print(f"Querying API with URL: {base_url} and params: {params}")  # Debug statement for query
-    response = requests.get(base_url, params=params)
-
-    if response.status_code == 200:
-        data = response.json()
-
-        #print(f"API Response: {data}")  # Debug statement to inspect API response
-        if 'features' in data and data['features']:
-            return data['features'][0]['properties'], data['features'][0]['id']
-        else:
-            # Try a broader search if exact match fails
-            print("No exact match found, trying broader search...")
-            # Extracting parts of the filename for broader search
-            parts = filename.split('_')
-            if len(parts) > 1:
-                params.pop('productIdentifier')
-                params['q'] = parts[1]  # Using a part of the filename for search
-                response = requests.get(base_url, params=params)
-                if response.status_code == 200:
-                    data = response.json()
-                    print(f"Broader API Response: {data}")  # Debug statement for broader search response
-                    if 'features' in data and data['features']:
-                        return data['features'][0]['properties'], data['features'][0]['id']
-            raise ValueError('No metadata found for the given filename.')
+    print(f"Querying API with URL: {base_url} and params: {params}")
+    data = query_api(base_url, params)
+    if data and 'features' in data and data['features']:
+        return data['features'][0]['properties'], data['features'][0]['id']
     else:
-        print(f"API Request failed with status code {response.status_code}")  # Debug statement for failed request
-        raise ValueError('No metadata found for the given filename.')
+        print("No exact match found, trying broader search...")
+        parts = filename.split('_')
+        if len(parts) > 1:
+            params.pop('productIdentifier', None)
+            params['q'] = parts[1]  # Using a part of the filename for broader search
+            data = query_api(base_url, params)
+            if data and 'features' in data and data['features']:
+                return data['features'][0]['properties'], data['features'][0]['id']
+    # Graceful failure instead of raising
+    print(f"Warning: No metadata found for {filename} in OpenSearch.")
+    return None, None
+    """
+    If OpenSearch fails → you get (None, None) instead of crashing.
+    Caller (generate_mmd) can then check and either continue with partial metadata or log an error.
+    """
