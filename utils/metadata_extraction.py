@@ -4,15 +4,13 @@ import json
 import h5py
 from lxml import etree as ET
 import os
-#import re
 import numpy as np
 import pandas as pd
-#import yaml
 import uuid
 import random
 import time
-
-from utils.utils import extract_coordinates, get_bounding_box
+from shapely.geometry import Polygon
+from utils.utils import extract_polygon, get_bounding_box
 
 
 def generate_http_url(filepath, product_type):
@@ -46,7 +44,6 @@ def generate_http_url(filepath, product_type):
 
     return url
 
-
 def check_metadata(metadata: dict, id: str) -> bool:
     """
     Checks if the metadata dictionary contains the required keys
@@ -60,8 +57,10 @@ def check_metadata(metadata: dict, id: str) -> bool:
     bool: True if all checks pass, False otherwise.
     """
     if not id:
+        print("Missing ID")
         return False
     if not metadata:
+        print("No metadata found")
         return False
 
     required_keys = {"north", "south", "east", "west", "orbitNumber", "completionDate", "startDate"}
@@ -76,10 +75,10 @@ def check_metadata(metadata: dict, id: str) -> bool:
     try:
         uuid.UUID(id)
     except ValueError:
+        print("Invalid ID")
         return False
 
     return True
-
 
 def get_product_metadata(product_metadata_df, esa_product_type):
     """
@@ -101,9 +100,6 @@ def get_product_metadata(product_metadata_df, esa_product_type):
         return {col: row.iloc[0][col] for col in row.columns if pd.notna(row.iloc[0][col]) and row.iloc[0][col] != ''}
     else:
         return {}
-
-
-
 
 def get_collection_from_filename(filename):
     if filename.startswith('S1'):
@@ -170,25 +166,30 @@ def get_metadata_from_safe(zip_file):
 
                 gml_element = root.xpath("//gml:coordinates", namespaces=namespaces)
                 if gml_element:
-                    metadata['polygon'] = gml_element[0].text
-                    # coordinates in S1 are comma separated, e.g. lat,lon lat,lon lat,lon
-                    # coordinates in S2 are space separated, e.g. lat lon lat lon lat lon
-                    # Need to flip to lon lat lon lat...
-                    if base.startswith('S1'):
-                        s = metadata['polygon']
-                        metadata['polygon']  = " ".join(",".join(pair.split(",")[::-1]) for pair in s.split())
-                    elif base.startswith('S2'):
-                        coords = list(map(float, metadata['polygon'].split()))
-                        switched = [coords[i + 1] if i % 2 == 0 else coords[i - 1] for i in range(len(coords))]
-                        metadata['polygon'] = ' '.join(map(str, switched))
+                    coords_str = gml_element[0].text
+                    if base.startswith('S2'):
+                        # coordinates in S2 are space separated, e.g. lat lon lat lon lat lon
+                        # Split into floats
+                        numbers = list(map(float, coords_str.split()))
+
+                        # Group into (lon, lat) tuples
+                        coords = [(numbers[i+1], numbers[i]) for i in range(0, len(numbers), 2)]
+
+                    elif base.startswith('S1'):
+                        pairs = coords_str.split()
+
+                        # Convert to (lon, lat) tuples
+                        coords = [(float(lon), float(lat)) for lat, lon in (pair.split(",") for pair in pairs)]
+
+                    # Create Shapely Polygon
+                    metadata['polygon'] = Polygon(coords)
 
                     try:
                         (
                             metadata['north'],
                             metadata['south'],
                             metadata['east'],
-                            metadata['west'],
-                            metadata['coords']
+                            metadata['west']
                         ) = get_bounding_box(metadata['polygon'])
                     except:
                         print('Failed to compute bounding box from GML')
@@ -268,22 +269,21 @@ def get_metadata_from_sen3(sen3_file):
 
                 gml_element = root.xpath("//gml:posList", namespaces=namespaces)
                 if gml_element:
-                    metadata['polygon'] = gml_element[0].text
-                    # Polygon in SAFE file is lat,lon lat,lon etc...
-                    # But polygon through OpenSearch is lon,lat lon,lat etc...
-                    # So need to flip the coordinates round here to be consistent since this program supports retrieves pulling metadata from either OpenSearch or the file.
-                    coords = list(map(float, metadata['polygon'].split()))
-                    flipped_coords = [f"{lat} {lon}" for lon, lat in zip(coords[0::2], coords[1::2])]
-                    #coords = flipped_coords = [f"{lon} {lat}" for lon, lat in zip(coords[0::2], coords[1::2])]
-                    metadata['polygon'] = " ".join(flipped_coords)
-                    #metadata['polygon'] = " ".join(coords)
+                    coords_str = gml_element[0].text
+                    # Split into floats
+                    numbers = list(map(float, coords_str.split()))
+
+                    # Group into (lon, lat) tuples
+                    coords = [(numbers[i+1], numbers[i]) for i in range(0, len(numbers), 2)]
+
+                    # Create Shapely Polygon
+                    metadata['polygon'] = Polygon(coords)
                     try:
                         (
                             metadata['north'],
                             metadata['south'],
                             metadata['east'],
-                            metadata['west'],
-                            metadata['coords']
+                            metadata['west']
                         ) = get_bounding_box(metadata['polygon'])
                     except:
                         print('Failed to compute bounding box from GML')
@@ -325,6 +325,10 @@ def get_metadata_from_netcdf(netcdf_file):
     return metadata
 
 def get_metadata_from_json(json_file):
+    '''
+    #! DEPRECATED
+    NOT CURRENTLY IN USE, DO NOT USE IN PRODUCTION
+    '''
     with open(json_file, encoding="utf-8") as file:
         metadata = json.load(file)
 
@@ -347,45 +351,93 @@ def get_metadata_from_json(json_file):
     if 'endposition' in metadata:
         metadata['completionDate'] = metadata['endposition']
 
-    metadata['polygon'] = extract_coordinates(metadata['gmlfootprint'])
-    s = metadata['polygon']
-    metadata['polygon']  = " ".join(",".join(pair.split(",")[::-1]) for pair in s.split())
+    metadata['polygon'] = extract_polygon(metadata['gmlfootprint'])
 
     (
         metadata['north'],
         metadata['south'],
         metadata['east'],
-        metadata['west'],
-        metadata['coords']
+        metadata['west']
     ) = get_bounding_box(metadata['polygon'])
 
     return id, metadata
 
+def query_api(url, params, access_token=None, max_retries=5, base_delay=5):
+    """
+    Helper function to query the API with exponential backoff and jitter.
+    """
 
-def get_metadata_from_opensearch(filename, access_token=None, max_retries=5, base_delay=5):
-    def query_api(url, params):
-        """
-        Helper function to query the API with exponential backoff and jitter.
-        """
-        headers = {}
-        if access_token:
-            headers['Authorization'] = f'Bearer {access_token}'
-        for attempt in range(1, max_retries + 1):
-            try:
-                print(f'Attempt {attempt} of {max_retries}: Querying API...')
-                response = requests.get(url, params=params, headers=headers, timeout=15)
-                response.raise_for_status()  # Raise HTTPError for bad responses
-                return response.json()
-            except requests.exceptions.RequestException as e:
-                wait = min(base_delay * (2 ** (attempt - 1)), 300)  # cap at 5 min
-                wait = wait * (0.5 + random.random())  # add jitter
-                print(f'API request failed (attempt {attempt}): {e}')
-                if attempt < max_retries:
-                    print(f'Retrying in {wait:.1f} seconds...')
-                    time.sleep(wait)
-                else:
-                    print('All retry attempts failed.')
-                    return None
+    headers = {}
+    if access_token:
+        headers['Authorization'] = f'Bearer {access_token}'
+    for attempt in range(1, max_retries + 1):
+        try:
+            print(f'Attempt {attempt} of {max_retries}: Querying API...')
+            response = requests.get(url, params=params, headers=headers, timeout=15)
+            response.raise_for_status()  # Raise HTTPError for bad responses
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            wait = min(base_delay * (2 ** (attempt - 1)), 300)  # cap at 5 min
+            wait = wait * (0.5 + random.random())  # add jitter
+            print(f'API request failed (attempt {attempt}): {e}')
+            if attempt < max_retries:
+                print(f'Retrying in {wait:.1f} seconds...')
+                time.sleep(wait)
+            else:
+                print('All retry attempts failed.')
+                return None
+
+def get_metadata_from_odata(basename):
+
+    base_url = "https://catalogue.dataspace.copernicus.eu/odata/v1/Products"
+
+    if basename.startswith('S1') or basename.startswith('S2'):
+        filename = basename + '.SAFE'
+    elif basename.startswith('S3'):
+        filename = basename + '.SEN3'
+    else:
+        filename = basename + '.nc'
+
+    params = {
+        "$filter": f"Name eq '{filename}'",
+        "$expand": "Attributes",
+        "$top": 1
+    }
+
+    data = query_api(base_url, params)
+
+    attributes = data['value'][0].get('Attributes', [])
+    attr_dict = {attr['Name']: attr['Value'] for attr in attributes}
+
+    metadata = {}
+
+    # Extract orbit numbers
+    metadata['orbitNumber'] = attr_dict.get('orbitNumber')
+    metadata['relativeOrbitNumber'] = attr_dict.get('relativeOrbitNumber')
+
+    if "value" in data and data["value"]:
+        item = data["value"][0]
+        tracking_id = item["Id"]
+        metadata['startDate'] = item['ContentDate']['Start']
+        metadata['completionDate'] = item['ContentDate']['End']
+        metadata['gmlgeometry'] = item['Footprint']
+
+        metadata['polygon'] = extract_polygon(metadata['gmlgeometry'])
+        (
+            metadata['north'],
+            metadata['south'],
+            metadata['east'],
+            metadata['west']
+        ) = get_bounding_box(metadata['polygon'])
+
+        print('Found required metadata using OData')
+        return metadata, tracking_id
+
+    # Graceful failure instead of raising
+    print(f"Warning: Issue querying OData for metadata for {filename}.")
+    return None, None
+
+def get_metadata_from_opensearch(filename):
     collection = get_collection_from_filename(filename)
     base_url = f'https://catalogue.dataspace.copernicus.eu/resto/api/collections/{collection}/search.json'
     params = {
@@ -395,7 +447,16 @@ def get_metadata_from_opensearch(filename, access_token=None, max_retries=5, bas
     print(f"Querying API with URL: {base_url} and params: {params}")
     data = query_api(base_url, params)
     if data and 'features' in data and data['features']:
-        return data['features'][0]['properties'], data['features'][0]['id']
+        metadata = data['features'][0]['properties']
+        id = data['features'][0]['id']
+        metadata["polygon"] = extract_polygon(metadata["gmlgeometry"])
+        (
+            metadata["north"],
+            metadata["south"],
+            metadata["east"],
+            metadata["west"]
+        ) = get_bounding_box(metadata["polygon"])
+        return metadata, id
     else:
         print("No exact match found, trying broader search...")
         parts = filename.split('_')
@@ -404,11 +465,16 @@ def get_metadata_from_opensearch(filename, access_token=None, max_retries=5, bas
             params['q'] = parts[1]  # Using a part of the filename for broader search
             data = query_api(base_url, params)
             if data and 'features' in data and data['features']:
-                return data['features'][0]['properties'], data['features'][0]['id']
+                metadata = data['features'][0]['properties']
+                id = data['features'][0]['id']
+                metadata["polygon"] = extract_polygon(metadata["gmlgeometry"])
+                (
+                    metadata["north"],
+                    metadata["south"],
+                    metadata["east"],
+                    metadata["west"]
+                ) = get_bounding_box(metadata["polygon"])
+                return metadata, id
     # Graceful failure instead of raising
-    print(f"Warning: No metadata found for {filename} in OpenSearch.")
+    print(f"Warning: Issue querying OpenSearch for metadata for {filename}")
     return None, None
-    """
-    If OpenSearch fails → you get (None, None) instead of crashing.
-    Caller (generate_mmd) can then check and either continue with partial metadata or log an error.
-    """

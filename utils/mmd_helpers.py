@@ -1,10 +1,11 @@
-import os 
-import re 
-import json 
+import os
+import re
+import json
 import yaml
 import glob
+from shapely.geometry import Polygon
 from lxml import etree as ET
-from datetime import datetime 
+from datetime import datetime
 from utils.metadata_extraction import (
     get_collection_from_filename,
     get_product_metadata,
@@ -93,8 +94,8 @@ def create_xml(script_dir, metadata, id, global_attributes, platform_metadata, p
     collection = ET.SubElement(root, prepend_mmd('collection'))
     collection.text = 'NBS'
 
-    if 'coords' in metadata.keys():
-        if within_sios(coord_strings=metadata['coords']):
+    if 'polygon' in metadata.keys():
+        if within_sios(polygon=metadata['polygon']):
             collection = ET.SubElement(root, prepend_mmd('collection'))
             collection.text = 'SIOS'
         else:
@@ -180,16 +181,73 @@ def create_xml(script_dir, metadata, id, global_attributes, platform_metadata, p
         south.text = str(metadata['south'])
         east.text = str(metadata['east'])
         west.text = str(metadata['west'])
-    if 'coords' in metadata.keys():
-        polygon = ET.SubElement(geographic_extent, prepend_mmd('polygon'))
-        sub_poly = ET.SubElement(polygon, prepend_gml('Polygon'))
-        sub_poly.attrib['id'] = 'polygon'
-        sub_poly.attrib['srsName'] = 'EPSG:4326'
-        exterior = ET.SubElement(sub_poly, prepend_gml('exterior'))
-        linear_ring = ET.SubElement(exterior, prepend_gml('LinearRing'))
-        for elem in metadata['coords']:
-            pos = ET.SubElement(linear_ring, prepend_gml('pos'))
-            pos.text = elem
+
+    if "polygon" in metadata:
+        try:
+            poly_data = metadata["polygon"]
+
+            # Case 1: WKT string
+            if isinstance(poly_data, str):
+                wkt = poly_data.strip()
+                if not wkt.upper().startswith("POLYGON"):
+                    raise ValueError("Expected WKT POLYGON")
+
+                inner = wkt[wkt.find("((") + 2 : wkt.rfind("))")]
+                rings = inner.split("), (")
+
+                exterior_ring = rings[0]
+                interior_rings = rings[1:]
+
+                def parse_coords(ring):
+                    coords = ring.replace(",", "").split()
+                    return [(float(coords[i]), float(coords[i+1])) for i in range(0, len(coords), 2)]
+
+                exterior_coords = parse_coords(exterior_ring)
+                interior_coords_list = [parse_coords(r) for r in interior_rings]
+
+            # Case 2: Shapely Polygon
+            elif isinstance(poly_data, Polygon):
+                exterior_coords = list(poly_data.exterior.coords)
+                interior_coords_list = [list(interior.coords) for interior in poly_data.interiors]
+
+            else:
+                raise TypeError(f"Unsupported polygon type: {type(poly_data)}")
+
+            # --- XML writing ---
+            polygon = ET.SubElement(geographic_extent, prepend_mmd("polygon"))
+            sub_poly = ET.SubElement(polygon, prepend_gml("Polygon"))
+            sub_poly.attrib["id"] = "polygon"
+            sub_poly.attrib["srsName"] = "EPSG:4326"
+
+            # Exterior
+            exterior = ET.SubElement(sub_poly, prepend_gml("exterior"))
+            linear_ring = ET.SubElement(exterior, prepend_gml("LinearRing"))
+            for x, y in exterior_coords:
+                pos = ET.SubElement(linear_ring, prepend_gml("pos"))
+                pos.text = f"{x} {y}"
+
+            # Interiors
+            for interior_coords in interior_coords_list:
+                interior = ET.SubElement(sub_poly, prepend_gml("interior"))
+                linear_ring = ET.SubElement(interior, prepend_gml("LinearRing"))
+                for x, y in interior_coords:
+                    pos = ET.SubElement(linear_ring, prepend_gml("pos"))
+                    pos.text = f"{x} {y}"
+
+        except Exception as e:
+            print(f"⚠️ Failed to write polygon from metadata: {e}")
+
+
+    #if 'coords' in metadata.keys():
+    #    polygon = ET.SubElement(geographic_extent, prepend_mmd('polygon'))
+    #    sub_poly = ET.SubElement(polygon, prepend_gml('Polygon'))
+    #    sub_poly.attrib['id'] = 'polygon'
+    #    sub_poly.attrib['srsName'] = 'EPSG:4326'
+    #    exterior = ET.SubElement(sub_poly, prepend_gml('exterior'))
+    #    linear_ring = ET.SubElement(exterior, prepend_gml('LinearRing'))
+    #    for elem in metadata['coords']:
+    #        pos = ET.SubElement(linear_ring, prepend_gml('pos'))
+    #        pos.text = elem
     else:
         print('Warning: polygon is None. Geographic extent will not be included in the XML.')
 
