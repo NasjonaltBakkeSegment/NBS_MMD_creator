@@ -18,7 +18,7 @@ from utils.mmd_helpers import create_xml, get_id_from_mapping_file
 # Get the script's directory
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
-def generate_mmd(script_dir, filename, global_attributes_config, platform_metadata_config, product_metadata_csv, output_path, overwrite, filepath, json_file=None):
+def generate_mmd(filename, global_attributes_config, platform_metadata_config, product_metadata_csv, output_path, overwrite, filepath, json_file=None):
     basename = filename.split('.')[0]
     #try:
     #    if json_file and os.path.exists(json_file):
@@ -117,7 +117,6 @@ def main():
 
     # Call the generate_mmd function
     generate_mmd(
-        script_dir=script_dir,  # Pass the script directory
         filename=args.product,
         global_attributes_config=args.global_attributes_config,
         platform_metadata_config=args.platform_metadata_config,
