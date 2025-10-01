@@ -3,7 +3,6 @@ import os
 import sys
 import pandas as pd
 from utils.metadata_extraction import (
-    get_metadata_from_json,
     get_metadata_from_netcdf,
     get_metadata_from_opensearch,
     get_metadata_from_odata,
@@ -11,23 +10,14 @@ from utils.metadata_extraction import (
     get_metadata_from_sen3,
     check_metadata,
 )
-from utils.utils import get_bounding_box, extract_coordinates
 from utils.config_handling import load_config,save_xml_to_file
 from utils.mmd_helpers import create_xml, get_id_from_mapping_file
 
 # Get the script's directory
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
-def generate_mmd(filename, global_attributes_config, platform_metadata_config, product_metadata_csv, output_path, overwrite, filepath, json_file=None):
+def generate_mmd(filename, global_attributes_config, platform_metadata_config, product_metadata_csv, output_path, overwrite, filepath):
     basename = filename.split('.')[0]
-    #try:
-    #    if json_file and os.path.exists(json_file):
-    #        print('Extracting metadata from JSON file')
-    #        id, metadata = get_metadata_from_json(json_file)
-    #    else:
-    #        raise FileNotFoundError  # Forces fallback logic
-    #except Exception as e:
-    #    print(f"Warning: Couldn't extract metadata from JSON file. Reason: {e}")
     try:
         # Pass script_dir to get_id_from_mapping_file
         id = get_id_from_mapping_file(script_dir, filename)
@@ -103,10 +93,6 @@ def main():
         "-f", "--filepath", type=str, required=False,
         help="Path to the data file (e.g., .zip, .SAFE, .nc) for metadata extraction."
     )
-    parser.add_argument(
-        "-j", "--json_metadata_filepath", type=str, required=False,
-        help="Path to a JSON metadata file from an earlier OpenSearch query."
-    )
 
     # Parse the command-line arguments
     args = parser.parse_args()
@@ -123,8 +109,7 @@ def main():
         product_metadata_csv=args.product_metadata_csv,
         output_path=args.mmd_path,
         overwrite=args.overwrite,
-        filepath=args.filepath,
-        json_file=args.json_metadata_filepath
+        filepath=args.filepath
     )
 
 if __name__ == "__main__":
