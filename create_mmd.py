@@ -2,7 +2,7 @@ import argparse
 import os
 import sys
 import pandas as pd
-from utils.metadata_extraction import (
+from mmd_utils.metadata_extraction import (
     get_metadata_from_netcdf,
     get_metadata_from_opensearch,
     get_metadata_from_odata,
@@ -10,8 +10,8 @@ from utils.metadata_extraction import (
     get_metadata_from_sen3,
     check_metadata,
 )
-from utils.config_handling import load_config,save_xml_to_file
-from utils.mmd_helpers import create_xml, get_id_from_mapping_file
+from mmd_utils.config_handling import load_config,save_xml_to_file
+from mmd_utils.mmd_helpers import create_xml, get_id_from_mapping_file
 
 # Get the script's directory
 script_dir = os.path.dirname(os.path.abspath(__file__))

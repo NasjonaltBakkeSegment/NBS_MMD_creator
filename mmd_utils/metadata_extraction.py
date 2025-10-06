@@ -10,7 +10,7 @@ import uuid
 import random
 import time
 from shapely.geometry import Polygon
-from utils.utils import extract_polygon, get_bounding_box
+from mmd_utils.mmd_utils import extract_polygon, get_bounding_box
 
 
 def generate_http_url(filepath, product_type):
