@@ -6,13 +6,13 @@ import glob
 from shapely.geometry import Polygon
 from lxml import etree as ET
 from datetime import datetime
-from utils.metadata_extraction import (
+from mmd_utils.metadata_extraction import (
     get_collection_from_filename,
     get_product_metadata,
     generate_http_url
 )
-from utils.xml_creation import prepend_mmd,prepend_xml,prepend_gml
-from utils.utils import (
+from mmd_utils.xml_creation import prepend_mmd,prepend_xml,prepend_gml
+from mmd_utils.mmd_utils import (
     within_sios,get_size_mb,
     get_netcdf_checksum,
     get_zip_checksum

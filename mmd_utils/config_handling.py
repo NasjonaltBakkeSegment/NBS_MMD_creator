@@ -1,14 +1,10 @@
 import yaml
-#import pandas as pd
 from lxml import etree as ET
-import os
-
 
 
 def load_config(yaml_path):
     with open(yaml_path, 'r') as file:
-        return yaml.safe_load(file)
-    
+        return yaml.safe_load(file)    
 
 def save_xml_to_file(xml_element, output_path):
 

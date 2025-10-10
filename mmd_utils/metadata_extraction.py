@@ -10,7 +10,7 @@ import uuid
 import random
 import time
 from shapely.geometry import Polygon
-from utils.utils import extract_polygon, get_bounding_box
+from mmd_utils.mmd_utils import extract_polygon, get_bounding_box
 
 
 def generate_http_url(filepath, product_type):
@@ -412,8 +412,9 @@ def get_metadata_from_odata(basename):
     metadata = {}
 
     # Extract orbit numbers
-    metadata['orbitNumber'] = attr_dict.get('orbitNumber')
-    metadata['relativeOrbitNumber'] = attr_dict.get('relativeOrbitNumber')
+    for attr in ['orbitNumber','relativeOrbitNumber']:
+        if attr in attr_dict and attr_dict[attr] is not None:
+            metadata[attr] = attr_dict[attr]
 
     if "value" in data and data["value"]:
         item = data["value"][0]

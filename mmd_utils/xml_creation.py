@@ -1,10 +1,4 @@
 from lxml import etree as ET
-from datetime import datetime
-import os
-import glob
-import json
-import re 
-import pandas as pd
 
 
 def prepend_mmd(tag: str) -> str:
