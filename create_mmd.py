@@ -16,11 +16,12 @@ from mmd_utils.mmd_helpers import create_xml, get_id_from_mapping_file
 # Get the script's directory
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
-def generate_mmd(filename, global_attributes_config, platform_metadata_config, product_metadata_csv, output_path, overwrite, filepath):
+def generate_mmd(filename, global_attributes_config, platform_metadata_config, product_metadata_csv, output_path, overwrite, filepath, id):
     basename = filename.split('.')[0]
     try:
-        # Pass script_dir to get_id_from_mapping_file
-        id = get_id_from_mapping_file(script_dir, filename)
+        if not id:
+            # Pass script_dir to get_id_from_mapping_file
+            id = get_id_from_mapping_file(script_dir, filename)
 
         if filename.startswith("S5"):
             print("Extracting metadata from NetCDF file")
@@ -33,11 +34,10 @@ def generate_mmd(filename, global_attributes_config, platform_metadata_config, p
             metadata = get_metadata_from_safe(filepath)
         else:
             metadata = {}
-            id = None
+
     except Exception as e:
         print(f"Error: Couldn't extract metadata from source file. Reason: {e}")
         metadata = {}
-        id = None
 
     if not check_metadata(metadata, id):
         print("Insufficient metadata, so querying")
@@ -93,6 +93,10 @@ def main():
         "-f", "--filepath", type=str, required=False,
         help="Path to the data file (e.g., .zip, .SAFE, .nc) for metadata extraction."
     )
+    parser.add_argument(
+        "-id", "--identifier", type=str, required=False,
+        help="Optional metadata identifier for the product. If provided this overrides the ESA identifier in the metadata_identifier file."
+    )
 
     # Parse the command-line arguments
     args = parser.parse_args()
@@ -109,7 +113,8 @@ def main():
         product_metadata_csv=args.product_metadata_csv,
         output_path=args.mmd_path,
         overwrite=args.overwrite,
-        filepath=args.filepath
+        filepath=args.filepath,
+        id=args.identifier 
     )
 
 if __name__ == "__main__":
