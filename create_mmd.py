@@ -11,13 +11,17 @@ from mmd_utils.metadata_extraction import (
     check_metadata,
 )
 from mmd_utils.config_handling import load_config,save_xml_to_file
-from mmd_utils.mmd_helpers import create_xml, get_id_from_mapping_file
+from mmd_utils.mmd_helpers import create_xml, get_id_from_mapping_file, generate_nbs_id
 
 # Get the script's directory
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
-def generate_mmd(filename, global_attributes_config, platform_metadata_config, product_metadata_csv, output_path, overwrite, filepath, id):
+def generate_mmd(filename, global_attributes_config, platform_metadata_config, product_metadata_csv, output_path, overwrite, filepath, create_id):
     basename = filename.split('.')[0]
+    if create_id:
+        id = generate_nbs_id(filename)
+    else:
+        id = None
     try:
         if not id:
             # Pass script_dir to get_id_from_mapping_file
@@ -93,10 +97,8 @@ def main():
         "-f", "--filepath", type=str, required=False,
         help="Path to the data file (e.g., .zip, .SAFE, .nc) for metadata extraction."
     )
-    parser.add_argument(
-        "-id", "--identifier", type=str, required=False,
-        help="Optional metadata identifier for the product. If provided this overrides the ESA identifier in the metadata_identifier file."
-    )
+    parser.add_argument('--create_id', '-id', action='store_true',
+        help='If present, a metadata identifier will be created unique to NBS instead. If not, the tracking ID provided by ESA is used.')
 
     # Parse the command-line arguments
     args = parser.parse_args()
@@ -114,7 +116,7 @@ def main():
         output_path=args.mmd_path,
         overwrite=args.overwrite,
         filepath=args.filepath,
-        id=args.identifier 
+        create_id=args.create_id
     )
 
 if __name__ == "__main__":
