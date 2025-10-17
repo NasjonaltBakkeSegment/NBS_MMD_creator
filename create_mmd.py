@@ -16,7 +16,7 @@ from mmd_utils.mmd_helpers import create_xml, get_id_from_mapping_file, generate
 # Get the script's directory
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
-def generate_mmd(filename, global_attributes_config, platform_metadata_config, product_metadata_csv, output_path, overwrite, filepath, create_id):
+def generate_mmd(filename, global_attributes_config, platform_metadata_config, product_metadata_csv, output_path, overwrite, filepath, create_id=False):
     basename = filename.split('.')[0]
     if create_id:
         id = generate_nbs_id(filename)
