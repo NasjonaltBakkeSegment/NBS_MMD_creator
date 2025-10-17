@@ -44,6 +44,28 @@ def generate_http_url(filepath, product_type):
 
     return url
 
+def is_valid_id(identifier: str) -> bool:
+    """
+    Check if the provided identifier is valid. It is valid if:
+    - It is a valid UUID, or
+    - It starts with 'no.met.nbs:' followed by a valid UUID.
+    """
+    def is_uuid(value: str) -> bool:
+        try:
+            uuid.UUID(value)
+            return True
+        except ValueError:
+            return False
+
+    if is_uuid(identifier):
+        return True
+
+    prefix = "no.met.nbs:"
+    if identifier.startswith(prefix):
+        return is_uuid(identifier[len(prefix):])
+
+    return False
+
 def check_metadata(metadata: dict, id: str) -> bool:
     """
     Checks if the metadata dictionary contains the required keys
@@ -73,12 +95,14 @@ def check_metadata(metadata: dict, id: str) -> bool:
 
     # Check if id is a valid UUID
     try:
-        uuid.UUID(id)
+        if is_valid_id(id):
+            return True
+        else:
+            print("Invalid ID")
+            return False
     except ValueError:
         print("Invalid ID")
         return False
-
-    return True
 
 def get_product_metadata(product_metadata_df, esa_product_type):
     """

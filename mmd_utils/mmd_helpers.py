@@ -3,6 +3,7 @@ import re
 import json
 import yaml
 import glob
+import uuid
 from shapely.geometry import Polygon
 from lxml import etree as ET
 from datetime import datetime
@@ -45,6 +46,17 @@ def get_id_from_mapping_file(script_dir, filename):
     except Exception:
         return None
 
+def generate_nbs_id(filename):
+    '''
+    Generate a UUID with a reverse domain name as a prefix e.g. no.met.nbs:bb520b13-206a-5622-aba3-395ea5a59815
+    v5 uuids are created as a function of a string. Here the product name (suffix removed) is used.
+    The same id is created if the code is run again for the same product.
+    '''
+    product_name = filename.split('.')[0]
+    rdn='no.met.nbs:' # reverse domain name
+    nbs_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, product_name)
+    nbs_id = rdn + str(nbs_uuid)
+    return nbs_id
 
 def create_xml(script_dir, metadata, id, global_attributes, platform_metadata, product_metadata_df, filename, filepath=None):
 
