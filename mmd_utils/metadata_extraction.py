@@ -429,8 +429,10 @@ def get_metadata_from_odata(basename):
     }
 
     data = query_api(base_url, params)
-
-    attributes = data['value'][0].get('Attributes', [])
+    if 'value' in data and len(data['value']) > 0:
+        attributes = data['value'][0].get('Attributes', [])
+    else:
+        attributes = []
     attr_dict = {attr['Name']: attr['Value'] for attr in attributes}
 
     metadata = {}

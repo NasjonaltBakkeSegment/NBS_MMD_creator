@@ -4,7 +4,7 @@ import json
 import yaml
 import glob
 import uuid
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, MultiPolygon
 from lxml import etree as ET
 from datetime import datetime
 from mmd_utils.metadata_extraction import (
@@ -198,6 +198,8 @@ def create_xml(script_dir, metadata, id, global_attributes, platform_metadata, p
         try:
             poly_data = metadata["polygon"]
 
+            polygons = []
+
             # Case 1: WKT string
             if isinstance(poly_data, str):
                 wkt = poly_data.strip()
@@ -207,44 +209,81 @@ def create_xml(script_dir, metadata, id, global_attributes, platform_metadata, p
                 inner = wkt[wkt.find("((") + 2 : wkt.rfind("))")]
                 rings = inner.split("), (")
 
-                exterior_ring = rings[0]
-                interior_rings = rings[1:]
-
                 def parse_coords(ring):
                     coords = ring.replace(",", "").split()
                     return [(float(coords[i]), float(coords[i+1])) for i in range(0, len(coords), 2)]
 
-                exterior_coords = parse_coords(exterior_ring)
-                interior_coords_list = [parse_coords(r) for r in interior_rings]
+                exterior_coords = parse_coords(rings[0])
+                interior_coords_list = [parse_coords(r) for r in rings[1:]]
+                polygons = [(exterior_coords, interior_coords_list)]
 
             # Case 2: Shapely Polygon
             elif isinstance(poly_data, Polygon):
-                exterior_coords = list(poly_data.exterior.coords)
-                interior_coords_list = [list(interior.coords) for interior in poly_data.interiors]
+                polygons = [(
+                    list(poly_data.exterior.coords),
+                    [list(interior.coords) for interior in poly_data.interiors]
+                )]
 
+            # Case 3: Shapely MultiPolygon
+            elif isinstance(poly_data, MultiPolygon):
+                polygons = [
+                    (
+                        list(polygon.exterior.coords),
+                        [list(interior.coords) for interior in polygon.interiors]
+                    )
+                    for polygon in poly_data.geoms
+                ]
             else:
                 raise TypeError(f"Unsupported polygon type: {type(poly_data)}")
 
             # --- XML writing ---
-            polygon = ET.SubElement(geographic_extent, prepend_mmd("polygon"))
-            sub_poly = ET.SubElement(polygon, prepend_gml("Polygon"))
-            sub_poly.attrib["id"] = "polygon"
-            sub_poly.attrib["srsName"] = "EPSG:4326"
+            polygon_elem = ET.SubElement(geographic_extent, prepend_mmd("polygon"))
 
-            # Exterior
-            exterior = ET.SubElement(sub_poly, prepend_gml("exterior"))
-            linear_ring = ET.SubElement(exterior, prepend_gml("LinearRing"))
-            for x, y in exterior_coords:
-                pos = ET.SubElement(linear_ring, prepend_gml("pos"))
-                pos.text = f"{x} {y}"
+            if isinstance(poly_data, Polygon) or (isinstance(poly_data, str) and wkt.upper().startswith("POLYGON")):
+                # Single Polygon case
+                exterior_coords, interior_coords_list = polygons[0]
+                sub_poly = ET.SubElement(polygon_elem, prepend_gml("Polygon"))
+                sub_poly.attrib["id"] = "polygon"
+                sub_poly.attrib["srsName"] = "EPSG:4326"
 
-            # Interiors
-            for interior_coords in interior_coords_list:
-                interior = ET.SubElement(sub_poly, prepend_gml("interior"))
-                linear_ring = ET.SubElement(interior, prepend_gml("LinearRing"))
-                for x, y in interior_coords:
+                # Exterior
+                exterior = ET.SubElement(sub_poly, prepend_gml("exterior"))
+                linear_ring = ET.SubElement(exterior, prepend_gml("LinearRing"))
+                for x, y in exterior_coords:
                     pos = ET.SubElement(linear_ring, prepend_gml("pos"))
                     pos.text = f"{x} {y}"
+
+                # Interiors
+                for interior_coords in interior_coords_list:
+                    interior = ET.SubElement(sub_poly, prepend_gml("interior"))
+                    linear_ring = ET.SubElement(interior, prepend_gml("LinearRing"))
+                    for x, y in interior_coords:
+                        pos = ET.SubElement(linear_ring, prepend_gml("pos"))
+                        pos.text = f"{x} {y}"
+
+            elif isinstance(poly_data, MultiPolygon):
+                # MultiPolygon case
+                multi_poly_elem = ET.SubElement(polygon_elem, prepend_gml("MultiPolygon"))
+                multi_poly_elem.attrib["srsName"] = "EPSG:4326"
+
+                for exterior_coords, interior_coords_list in polygons:
+                    member = ET.SubElement(multi_poly_elem, prepend_gml("polygonMember"))
+                    sub_poly = ET.SubElement(member, prepend_gml("Polygon"))
+
+                    # Exterior
+                    exterior = ET.SubElement(sub_poly, prepend_gml("exterior"))
+                    linear_ring = ET.SubElement(exterior, prepend_gml("LinearRing"))
+                    for x, y in exterior_coords:
+                        pos = ET.SubElement(linear_ring, prepend_gml("pos"))
+                        pos.text = f"{x} {y}"
+
+                    # Interiors
+                    for interior_coords in interior_coords_list:
+                        interior = ET.SubElement(sub_poly, prepend_gml("interior"))
+                        linear_ring = ET.SubElement(interior, prepend_gml("LinearRing"))
+                        for x, y in interior_coords:
+                            pos = ET.SubElement(linear_ring, prepend_gml("pos"))
+                            pos.text = f"{x} {y}"
 
         except Exception as e:
             print(f"⚠️ Failed to write polygon from metadata: {e}")

@@ -2,7 +2,7 @@ import os
 import hashlib
 import re
 import zipfile
-from shapely.geometry import Polygon, LinearRing, box
+from shapely.geometry import Polygon, MultiPolygon, box
 from shapely import wkt
 from lxml import etree as ET
 
@@ -121,11 +121,11 @@ def within_sios(polygon=None, north=None, south=None, east=None, west=None):
     ])
 
     if polygon:
-        # Ensure input is a Shapely Polygon
-        if not isinstance(polygon, Polygon):
-            raise TypeError("polygon must be a shapely.geometry.Polygon")
+        # Ensure input is a Shapely Polygon or MultiPolygon
+        if not isinstance(polygon, (Polygon, MultiPolygon)):
+            raise TypeError("polygon must be a shapely.geometry.Polygon or MultiPolygon")
 
-        # Return True if the polygon intersects with SIOS polygon
+        # Return True if the geometry intersects with SIOS polygon
         return polygon.intersects(sios_polygon)
 
     elif north is not None and south is not None and east is not None and west is not None:

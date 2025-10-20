@@ -46,10 +46,10 @@ def generate_mmd(filename, global_attributes_config, platform_metadata_config, p
     if not check_metadata(metadata, id):
         print("Insufficient metadata, so querying")
         metadata, id = get_metadata_from_odata(basename)
-        if not check_metadata(metadata,id):
-            metadata, id = get_metadata_from_opensearch(basename)
-        else:
-            pass
+        #if not check_metadata(metadata,id):
+        #    metadata, id = get_metadata_from_opensearch(basename)
+        #else:
+        #    pass
 
     # Load configurations
     global_attributes = load_config(global_attributes_config)
