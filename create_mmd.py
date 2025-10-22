@@ -4,30 +4,40 @@ import sys
 import pandas as pd
 from mmd_utils.metadata_extraction import (
     get_metadata_from_netcdf,
-    get_metadata_from_opensearch,
     get_metadata_from_odata,
+    get_metadata_from_json,
     get_metadata_from_safe,
     get_metadata_from_sen3,
     check_metadata,
 )
 from mmd_utils.config_handling import load_config,save_xml_to_file
-from mmd_utils.mmd_helpers import create_xml, get_id_from_mapping_file, generate_nbs_id
+from mmd_utils.mmd_helpers import create_xml, generate_nbs_id
 
 # Get the script's directory
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
-def generate_mmd(filename, global_attributes_config, platform_metadata_config, product_metadata_csv, output_path, overwrite, filepath, create_id=False):
+def generate_mmd(
+        filename, 
+        global_attributes_config, 
+        platform_metadata_config, 
+        product_metadata_csv, 
+        output_path,
+        filepath,
+        json_metadata=None,
+        create_id=False
+        ):
+    
     basename = filename.split('.')[0]
     if create_id:
         id = generate_nbs_id(filename)
     else:
         id = None
     try:
-        if not id:
-            # Pass script_dir to get_id_from_mapping_file
-            id = get_id_from_mapping_file(script_dir, filename)
 
-        if filename.startswith("S5"):
+        if json_metadata:
+            print("Extracting metadata from JSON")
+            metadata, id = get_metadata_from_json(json_metadata)
+        elif filename.startswith("S5"):
             print("Extracting metadata from NetCDF file")
             metadata = get_metadata_from_netcdf(filepath)
         elif filename.startswith("S3"):
@@ -46,10 +56,6 @@ def generate_mmd(filename, global_attributes_config, platform_metadata_config, p
     if not check_metadata(metadata, id):
         print("Insufficient metadata, so querying")
         metadata, id = get_metadata_from_odata(basename)
-        #if not check_metadata(metadata,id):
-        #    metadata, id = get_metadata_from_opensearch(basename)
-        #else:
-        #    pass
 
     # Load configurations
     global_attributes = load_config(global_attributes_config)
@@ -90,12 +96,12 @@ def main():
         help="Path to save the generated MMD file."
     )
     parser.add_argument(
-        "-o", "--overwrite", action="store_true",
-        help="Overwrite existing elements if they exist."
-    )
-    parser.add_argument(
         "-f", "--filepath", type=str, required=False,
         help="Path to the data file (e.g., .zip, .SAFE, .nc) for metadata extraction."
+    )
+    parser.add_argument(
+        "--json_metadata", "-j", type=str, required=False,
+        help="Filepath of a JSON file including metadata from an expanded OData query to write to MMD."
     )
     parser.add_argument('--create_id', '-id', action='store_true',
         help='If present, a metadata identifier will be created unique to NBS instead. If not, the tracking ID provided by ESA is used.')
@@ -114,8 +120,8 @@ def main():
         platform_metadata_config=args.platform_metadata_config,
         product_metadata_csv=args.product_metadata_csv,
         output_path=args.mmd_path,
-        overwrite=args.overwrite,
         filepath=args.filepath,
+        json_metadata=args.json_metadata,
         create_id=args.create_id
     )
 

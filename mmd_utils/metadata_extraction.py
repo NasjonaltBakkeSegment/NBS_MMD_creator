@@ -12,7 +12,6 @@ import time
 from shapely.geometry import Polygon
 from mmd_utils.mmd_utils import extract_polygon, get_bounding_box
 
-
 def generate_http_url(filepath, product_type):
 
     filename = os.path.basename(filepath)
@@ -348,44 +347,6 @@ def get_metadata_from_netcdf(netcdf_file):
 
     return metadata
 
-def get_metadata_from_json(json_file):
-    '''
-    #! DEPRECATED
-    NOT CURRENTLY IN USE, DO NOT USE IN PRODUCTION
-    '''
-    with open(json_file, encoding="utf-8") as file:
-        metadata = json.load(file)
-
-    id = metadata.get('uuid')
-
-    for key in [
-        'orbitNumber',
-        'orbitDirection',
-        'productLevel',
-        'relativeOrbitNumber',
-        'productType',
-        'platformName'
-    ]:
-        lower_key = key.lower()
-        if lower_key in metadata:
-            metadata[key] = metadata[lower_key]
-
-    if 'beginposition' in metadata:
-        metadata['startDate'] = metadata['beginposition']
-    if 'endposition' in metadata:
-        metadata['completionDate'] = metadata['endposition']
-
-    metadata['polygon'] = extract_polygon(metadata['gmlfootprint'])
-
-    (
-        metadata['north'],
-        metadata['south'],
-        metadata['east'],
-        metadata['west']
-    ) = get_bounding_box(metadata['polygon'])
-
-    return id, metadata
-
 def query_api(url, params, access_token=None, max_retries=5, base_delay=5):
     """
     Helper function to query the API with exponential backoff and jitter.
@@ -429,79 +390,59 @@ def get_metadata_from_odata(basename):
     }
 
     data = query_api(base_url, params)
+    
     if 'value' in data and len(data['value']) > 0:
-        attributes = data['value'][0].get('Attributes', [])
+        json_data = data['value'][0]
+        metadata, id = get_metadata_from_odata_dict(json_data)
+        return metadata, id
     else:
-        attributes = []
-    attr_dict = {attr['Name']: attr['Value'] for attr in attributes}
+        print(f"Warning: Issue querying OData for metadata for {filename}.")
+        return None, None
+
+def get_metadata_from_odata_dict(data):
+    attributes = data.get('Attributes', [])
+    if attributes:
+        attr_dict = {attr['Name']: attr['Value'] for attr in attributes}
+    else:
+        attributes = {}
 
     metadata = {}
 
     # Extract orbit numbers
-    for attr in ['orbitNumber','relativeOrbitNumber']:
+    for attr in ['orbitNumber','relativeOrbitNumber', 'orbitDirection', 'cloudCover']:
         if attr in attr_dict and attr_dict[attr] is not None:
             metadata[attr] = attr_dict[attr]
+    
+    if "polarisationChannels" in attr_dict and attr_dict["polarisationChannels"] is not None:
+        metadata["polarisation"] = attr_dict['polarisationChannels']
 
-    if "value" in data and data["value"]:
-        item = data["value"][0]
-        tracking_id = item["Id"]
-        metadata['startDate'] = item['ContentDate']['Start']
-        metadata['completionDate'] = item['ContentDate']['End']
-        metadata['gmlgeometry'] = item['Footprint']
+    metadata['md5_checksum'] = next(
+        (c["Value"] for c in data.get("Checksum", []) if c.get("Algorithm") == "MD5"),
+        None
+    )
 
-        metadata['polygon'] = extract_polygon(metadata['gmlgeometry'])
-        (
-            metadata['north'],
-            metadata['south'],
-            metadata['east'],
-            metadata['west']
-        ) = get_bounding_box(metadata['polygon'])
+    tracking_id = data["Id"]
+    metadata['startDate'] = data['ContentDate']['Start']
+    metadata['completionDate'] = data['ContentDate']['End']
+    metadata['gmlgeometry'] = data['Footprint']
 
-        print('Found required metadata using OData')
-        return metadata, tracking_id
+    metadata['polygon'] = extract_polygon(metadata['gmlgeometry'])
+    (
+        metadata['north'],
+        metadata['south'],
+        metadata['east'],
+        metadata['west']
+    ) = get_bounding_box(metadata['polygon'])
 
-    # Graceful failure instead of raising
-    print(f"Warning: Issue querying OData for metadata for {filename}.")
-    return None, None
+    print('Found required metadata using OData')
+    return metadata, tracking_id
 
-def get_metadata_from_opensearch(filename):
-    collection = get_collection_from_filename(filename)
-    base_url = f'https://catalogue.dataspace.copernicus.eu/resto/api/collections/{collection}/search.json'
-    params = {
-        'productIdentifier': filename,
-        'maxRecords': 1
-    }
-    print(f"Querying API with URL: {base_url} and params: {params}")
-    data = query_api(base_url, params)
-    if data and 'features' in data and data['features']:
-        metadata = data['features'][0]['properties']
-        id = data['features'][0]['id']
-        metadata["polygon"] = extract_polygon(metadata["gmlgeometry"])
-        (
-            metadata["north"],
-            metadata["south"],
-            metadata["east"],
-            metadata["west"]
-        ) = get_bounding_box(metadata["polygon"])
-        return metadata, id
-    else:
-        print("No exact match found, trying broader search...")
-        parts = filename.split('_')
-        if len(parts) > 1:
-            params.pop('productIdentifier', None)
-            params['q'] = parts[1]  # Using a part of the filename for broader search
-            data = query_api(base_url, params)
-            if data and 'features' in data and data['features']:
-                metadata = data['features'][0]['properties']
-                id = data['features'][0]['id']
-                metadata["polygon"] = extract_polygon(metadata["gmlgeometry"])
-                (
-                    metadata["north"],
-                    metadata["south"],
-                    metadata["east"],
-                    metadata["west"]
-                ) = get_bounding_box(metadata["polygon"])
-                return metadata, id
-    # Graceful failure instead of raising
-    print(f"Warning: Issue querying OpenSearch for metadata for {filename}")
-    return None, None
+def get_metadata_from_json(json_file):
+    '''
+    Extract metadata from json/dictionary from an expanded OData query
+    '''
+
+    with open(json_file, "r", encoding="utf-8") as fh:
+        json_data = json.load(fh)
+
+    return get_metadata_from_odata_dict(json_data)
