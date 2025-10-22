@@ -1,14 +1,10 @@
 import os
-import re
-import json
 import yaml
-import glob
 import uuid
 from shapely.geometry import Polygon, MultiPolygon
 from lxml import etree as ET
 from datetime import datetime
 from mmd_utils.metadata_extraction import (
-    get_collection_from_filename,
     get_product_metadata,
     generate_http_url
 )
@@ -26,25 +22,6 @@ def get_parent_id(script_dir, platform, product_type):
         mapping = yaml.safe_load(file)
     parent_id = mapping[platform][product_type]
     return parent_id
-
-
-def get_id_from_mapping_file(script_dir, filename):
-    try:
-        # Regex pattern to match the first occurrence of a 4-digit year
-        pattern = re.compile(r"(\d{4})")
-        match = pattern.search(filename)
-        year = str(match.group(1))
-        mission = get_collection_from_filename(filename).replace("Sentinel", "Sentinel-").replace("Sentinel-5P", "Sentinel-5")
-        filename_pattern = os.path.join(script_dir, f"mapping/{mission}_{year}0101-{year}*mapping*")
-        matching_files = sorted(glob.glob(filename_pattern))
-        mapping_file = matching_files[-1]
-
-        with open(mapping_file, "r", encoding="utf-8") as file:
-            dic = json.load(file)
-        id = dic[filename.split(".")[0]]
-        return id
-    except Exception:
-        return None
 
 def generate_nbs_id(filename):
     '''
@@ -288,17 +265,6 @@ def create_xml(script_dir, metadata, id, global_attributes, platform_metadata, p
         except Exception as e:
             print(f"⚠️ Failed to write polygon from metadata: {e}")
 
-
-    #if 'coords' in metadata.keys():
-    #    polygon = ET.SubElement(geographic_extent, prepend_mmd('polygon'))
-    #    sub_poly = ET.SubElement(polygon, prepend_gml('Polygon'))
-    #    sub_poly.attrib['id'] = 'polygon'
-    #    sub_poly.attrib['srsName'] = 'EPSG:4326'
-    #    exterior = ET.SubElement(sub_poly, prepend_gml('exterior'))
-    #    linear_ring = ET.SubElement(exterior, prepend_gml('LinearRing'))
-    #    for elem in metadata['coords']:
-    #        pos = ET.SubElement(linear_ring, prepend_gml('pos'))
-    #        pos.text = elem
     else:
         print('Warning: polygon is None. Geographic extent will not be included in the XML.')
 
@@ -364,7 +330,9 @@ def create_xml(script_dir, metadata, id, global_attributes, platform_metadata, p
     checksum = ET.SubElement(storage_information, prepend_mmd('checksum'))
     checksum.attrib['type'] = 'md5sum'
 
-    if filepath:
+    if 'md5_checksum' in metadata and metadata['md5_checksum'] is not None:
+        checksum.text = metadata['md5_checksum']
+    elif filepath:
         try:
             if file_extension == '.zip':
                 checksum.text = get_zip_checksum(filepath)
