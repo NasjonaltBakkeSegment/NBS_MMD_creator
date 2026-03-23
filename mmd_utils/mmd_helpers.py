@@ -171,7 +171,8 @@ def create_xml(script_dir, metadata, id, global_attributes, platform_metadata, p
         east.text = str(metadata['east'])
         west.text = str(metadata['west'])
 
-    if "polygon" in metadata:
+    #if "polygon" in metadata:
+    if False: #! Disabled. Uncomment the other line to resume writing the polygon to the MMD
         try:
             poly_data = metadata["polygon"]
 
@@ -226,17 +227,17 @@ def create_xml(script_dir, metadata, id, global_attributes, platform_metadata, p
                 # Exterior
                 exterior = ET.SubElement(sub_poly, prepend_gml("exterior"))
                 linear_ring = ET.SubElement(exterior, prepend_gml("LinearRing"))
-                for x, y in exterior_coords:
+                for lon, lat in exterior_coords:
                     pos = ET.SubElement(linear_ring, prepend_gml("pos"))
-                    pos.text = f"{x} {y}"
+                    pos.text = f"{lat} {lon}"
 
                 # Interiors
                 for interior_coords in interior_coords_list:
                     interior = ET.SubElement(sub_poly, prepend_gml("interior"))
                     linear_ring = ET.SubElement(interior, prepend_gml("LinearRing"))
-                    for x, y in interior_coords:
+                    for lon, lat in interior_coords:
                         pos = ET.SubElement(linear_ring, prepend_gml("pos"))
-                        pos.text = f"{x} {y}"
+                        pos.text = f"{lat} {lon}"
 
             elif isinstance(poly_data, MultiPolygon):
                 # MultiPolygon case
@@ -250,17 +251,17 @@ def create_xml(script_dir, metadata, id, global_attributes, platform_metadata, p
                     # Exterior
                     exterior = ET.SubElement(sub_poly, prepend_gml("exterior"))
                     linear_ring = ET.SubElement(exterior, prepend_gml("LinearRing"))
-                    for x, y in exterior_coords:
+                    for lon, lat in exterior_coords:
                         pos = ET.SubElement(linear_ring, prepend_gml("pos"))
-                        pos.text = f"{x} {y}"
+                        pos.text = f"{lat} {lon}"
 
                     # Interiors
                     for interior_coords in interior_coords_list:
                         interior = ET.SubElement(sub_poly, prepend_gml("interior"))
                         linear_ring = ET.SubElement(interior, prepend_gml("LinearRing"))
-                        for x, y in interior_coords:
+                        for lon, lat in interior_coords:
                             pos = ET.SubElement(linear_ring, prepend_gml("pos"))
-                            pos.text = f"{x} {y}"
+                            pos.text = f"{lat} {lon}"
 
         except Exception as e:
             print(f"⚠️ Failed to write polygon from metadata: {e}")
