@@ -171,8 +171,7 @@ def create_xml(script_dir, metadata, id, global_attributes, platform_metadata, p
         east.text = str(metadata['east'])
         west.text = str(metadata['west'])
 
-    #if "polygon" in metadata:
-    if False: #! Disabled. Uncomment the other line to resume writing the polygon to the MMD
+    if "polygon" in metadata:
         try:
             poly_data = metadata["polygon"]
 
