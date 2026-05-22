@@ -6,7 +6,8 @@ from lxml import etree as ET
 from datetime import datetime
 from mmd_utils.metadata_extraction import (
     get_product_metadata,
-    generate_http_url
+    generate_http_url,
+    generate_opendap_url
 )
 from mmd_utils.xml_creation import prepend_mmd,prepend_xml,prepend_gml
 from mmd_utils.mmd_utils import (
@@ -434,6 +435,15 @@ def create_xml(script_dir, metadata, id, global_attributes, platform_metadata, p
     da_description.text = 'Direct access to the full data file.'
     da_resource = ET.SubElement(data_access,prepend_mmd('resource'))
     da_resource.text = generate_http_url(filepath,product_metadata['product_type'])
+
+    if filename.startswith('S5'):
+        data_access = ET.SubElement(root,prepend_mmd('data_access'))
+        da_type = ET.SubElement(data_access, prepend_mmd('type'))
+        da_type.text = 'OPeNDAP'
+        da_description = ET.SubElement(data_access,prepend_mmd('description'))
+        da_description.text = 'Open-source Project for a Network Data Access Protocol.'
+        da_resource = ET.SubElement(data_access,prepend_mmd('resource'))
+        da_resource.text = generate_opendap_url(filepath,product_metadata['product_type'])
 
     parent_ID = get_parent_id(script_dir, filename_platform, product_metadata['product_type'])
     related_dataset = ET.SubElement(root,prepend_mmd('related_dataset'))
