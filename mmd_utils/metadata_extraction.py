@@ -52,7 +52,7 @@ def generate_opendap_url(filepath, product_type):
 
     filename = os.path.basename(filepath)
 
-    root_path = "https://nbstds.met.no/thredds/dodsC/nbsArchive/"
+    root_path = "https://nbstds.met.no/thredds/dodsC/NBS/"
     platform = filename.split('_')[0]
     date = filename[20:28]
 
