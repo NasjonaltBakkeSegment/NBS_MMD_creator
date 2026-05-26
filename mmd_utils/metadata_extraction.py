@@ -43,6 +43,26 @@ def generate_http_url(filepath, product_type):
 
     return url
 
+def generate_opendap_url(filepath, product_type):
+    '''
+    Generates the OPeNDAP URL for the product
+    Only works for S5 products where the source is in netCDF
+    For products we convert to netCDF, this needs to be added in the manage_mmd_files repo
+    '''
+
+    filename = os.path.basename(filepath)
+
+    root_path = "https://nbstds.met.no/thredds/dodsC/NBS/"
+    platform = filename.split('_')[0]
+    date = filename[20:28]
+
+    year = date[:4]
+    month = date[4:6]
+    day = date[6:]
+    url = f'{root_path}{platform}/{year}/{month}/{day}/{product_type}/{filename}'
+
+    return url
+
 def is_valid_id(identifier: str) -> bool:
     """
     Check if the provided identifier is valid. It is valid if:
@@ -390,7 +410,7 @@ def get_metadata_from_odata(basename):
     }
 
     data = query_api(base_url, params)
-    
+
     if 'value' in data and len(data['value']) > 0:
         json_data = data['value'][0]
         metadata, id = get_metadata_from_odata_dict(json_data)
@@ -412,7 +432,7 @@ def get_metadata_from_odata_dict(data):
     for attr in ['orbitNumber','relativeOrbitNumber', 'orbitDirection', 'cloudCover']:
         if attr in attr_dict and attr_dict[attr] is not None:
             metadata[attr] = attr_dict[attr]
-    
+
     if "polarisationChannels" in attr_dict and attr_dict["polarisationChannels"] is not None:
         metadata["polarisation"] = attr_dict['polarisationChannels']
 
