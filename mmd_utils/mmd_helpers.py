@@ -436,7 +436,7 @@ def create_xml(script_dir, metadata, id, global_attributes, platform_metadata, p
     da_resource = ET.SubElement(data_access,prepend_mmd('resource'))
     da_resource.text = generate_http_url(filepath,product_metadata['product_type'])
 
-    if filename.startswith('S5'):
+    if filename.startswith('S5') and filename_product_type != 'L2__O3_TCL':
         data_access = ET.SubElement(root,prepend_mmd('data_access'))
         da_type = ET.SubElement(data_access, prepend_mmd('type'))
         da_type.text = 'OPeNDAP'
