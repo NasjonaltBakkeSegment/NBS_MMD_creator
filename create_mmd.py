@@ -53,17 +53,27 @@ def generate_mmd(
         print(f"Error: Couldn't extract metadata from source file. Reason: {e}")
         metadata = {}
 
+    used_odata = False
     if not check_metadata(metadata, id):
         print("Insufficient metadata, so querying")
         metadata, id = get_metadata_from_odata(basename)
+        used_odata = True
 
     # Load configurations
     global_attributes = load_config(global_attributes_config)
     platform_metadata = load_config(platform_metadata_config)
     product_metadata_df = pd.read_csv(product_metadata_csv)
 
-    # Create XML
-    mmd_xml = create_xml(script_dir, metadata, id, global_attributes, platform_metadata, product_metadata_df, filename, filepath)
+    # Create XML. If it fails with non-OData metadata, retry once with OData metadata.
+    try:
+        mmd_xml = create_xml(script_dir, metadata, id, global_attributes, platform_metadata, product_metadata_df, filename, filepath)
+    except Exception as e:
+        if used_odata:
+            raise
+
+        print(f"XML creation failed with extracted metadata. Retrying with OData metadata. Reason: {e}")
+        metadata, id = get_metadata_from_odata(basename)
+        mmd_xml = create_xml(script_dir, metadata, id, global_attributes, platform_metadata, product_metadata_df, filename, filepath)
 
     # Save XML to the output path
     save_xml_to_file(mmd_xml, output_path)
